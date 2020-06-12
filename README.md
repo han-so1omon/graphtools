@@ -17,6 +17,7 @@ Includes a terminal display using [asciimoo/drawille](https://github.com/asciimo
 ![Sample 4](demos/sample_graph_4.png)
 
 ## TODO
+- Order nodes and edges upon insertion in order to implement binary searching
 - Generate graph from inputs
 - Algorithm demos
 - Generate bidirectional graph

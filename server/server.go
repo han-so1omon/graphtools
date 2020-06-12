@@ -19,12 +19,12 @@ func internalError(ws *websocket.Conn, msg string, err error) {
 
 func sendGraph(ws *websocket.Conn, g *structures.Graph) {
 	g.Lock.Lock()
+	defer g.Lock.Unlock()
 	gJSON, err := json.Marshal(g)
 	if err != nil {
 		log.Println("sendgraph:", err)
 	}
 	ws.WriteMessage(websocket.TextMessage, gJSON)
-	g.Lock.Unlock()
 }
 
 func GraphConnect(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -36,7 +36,7 @@ func GraphConnect(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	}
 
 	// Load graph
-	g := structures.RandomBidirectionalGraph(100, 100, 100, 200, 125)
+	g := structures.RandomUnidirectionalGraph(100, 100, 100, 200, 125)
 
 	// Send initial graph
 	go sendGraph(ws, g)
