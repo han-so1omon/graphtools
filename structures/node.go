@@ -47,7 +47,11 @@ func (n *Node) String() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, ".....NODE %d : (%d,%d,%d).....\n", n.ID, n.Coords.X, n.Coords.Y, n.Coords.Z)
 	for _, e := range n.Edges {
-		fmt.Fprintf(&b, "\t%d <= {%f} => %d\n", e.Nodes[0].ID, e.Weight, e.Nodes[1].ID)
+		fmt.Fprintf(
+			&b,
+			"\t%d <= {%s-%s: %f} => %d\n",
+			e.Nodes[0].ID, e.Nodes[0].Tag, e.Nodes[1].Tag, e.Weight, e.Nodes[1].ID,
+		)
 	}
 	fmt.Fprintf(&b, "...........................\n")
 	return b.String()

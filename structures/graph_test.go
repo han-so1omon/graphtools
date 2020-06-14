@@ -154,6 +154,15 @@ func TestGraph(t *testing.T) {
 		checkEdge(t, g, n2, n4, 33, "big", "ups")
 		checkEdge(t, g, n4, n2, 33, "ups", "big")
 
+		// Try setting edge with new node in place of existing edge
+		n5, _ := g.GetNodeByID(75)
+		err = g.SetEdge(n2, n5, 31, "big", "ups", true)
+		if err != nil {
+			t.Fatalf(fmt.Sprintf("Could not add bidirectional edge from %d to %d", n2.ID, n5.ID))
+		}
+		checkEdge(t, g, n2, n5, 31, "big", "ups")
+		checkEdge(t, g, n5, n2, 31, "ups", "big")
+
 		err = g.SetEdgeByNodeID(n2.ID, n3.ID, 77, "bad", "motha", true)
 		if err != nil {
 			t.Fatalf(fmt.Sprintf("Could not add bidirectional edge from %d to %d", n2.ID, n3.ID))

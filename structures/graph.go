@@ -13,6 +13,7 @@ type NoNodeError struct {
 	v int
 }
 
+// Error serves the error message for NoNodeError
 func (e NoNodeError) Error() string {
 	return fmt.Sprintf("Graph: no node with value %d", int(e.v))
 }
@@ -23,6 +24,7 @@ type NoEdgeError struct {
 	msg string
 }
 
+// Error serves the error message for NoEdgeError
 func (e NoEdgeError) Error() string {
 	return "Graph: " + e.msg
 }
@@ -32,6 +34,7 @@ type EdgeWeightError struct {
 	w float64
 }
 
+// Error serves the error message for EdgeWeightError
 func (e EdgeWeightError) Error() string {
 	return fmt.Sprintf("Graph: invalid edge value %f", e.w)
 }
@@ -47,6 +50,8 @@ type Comparable interface {
 	GetValue() int
 }
 
+// Graph is the generalized node-edge data structure to power the algorithms and
+// structures built on the graphtools library
 type Graph struct {
 	NumNodes      int     `json:"numNodes"`
 	NumEdges      int     `json:"numEdges"`
@@ -59,6 +64,7 @@ type Graph struct {
 	Done    chan struct{} `json:"-"`
 }
 
+// String does a pretty print of the current graph
 func (g *Graph) String() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "-.-.-.-GRAPH-.-.-.-.-\n")
@@ -69,6 +75,7 @@ func (g *Graph) String() string {
 	return b.String()
 }
 
+// NewGraph creates a new graph structure with a maximum edge weight value
 func NewGraph(maxEdgeWeight float64) *Graph {
 	rand.Seed(time.Now().UTC().UnixNano())
 	g := new(Graph)
@@ -83,24 +90,26 @@ func NewGraph(maxEdgeWeight float64) *Graph {
 	return g
 }
 
-// Updated is useful to be called when the graph is decided to be updated.
+// GraphUpdated is useful to be called when the graph is decided to be updated.
 // It is the prerogative of graph owners (i.e. end-users, accompanying
 // structures, or algorithms) to call GraphUpdated()
 func (g *Graph) GraphUpdated() {
 	g.Updated <- struct{}{}
 }
 
-// Done is useful to be called when the graph is decided to be done
+// GraphDone is useful to be called when the graph is decided to be done
 // It is the prerogative of graph owners (i.e. end-users, accompanying
 // structures, or algorithms) to call GraphDone()
 func (g *Graph) GraphDone() {
 	g.Done <- struct{}{}
 }
 
+// IsEmpty returns whether or not the graph is empty
 func (g *Graph) IsEmpty() bool {
 	return g.NumNodes == 0
 }
 
+// HasNodeWithID returns whether the graph has a node with the specified ID
 func (g *Graph) HasNodeWithID(id int) bool {
 	for _, n := range g.Nodes {
 		if n.ID == id {
@@ -110,6 +119,7 @@ func (g *Graph) HasNodeWithID(id int) bool {
 	return false
 }
 
+// GetNodeByID returns the node with the specified ID
 func (g *Graph) GetNodeByID(id int) (*Node, error) {
 	for _, n := range g.Nodes {
 		if n.ID == id {
@@ -200,6 +210,8 @@ func (g *Graph) RemoveNodeByID(n1 int) (*Node, error) {
 	return n, nil
 }
 
+// HasRelative returns whether the graph node has a relative with the specified
+// tag
 func (g *Graph) HasRelative(n *Node, tag string) bool {
 	for _, e := range n.Edges {
 		if e.Nodes[1].Tag == tag {
@@ -209,6 +221,7 @@ func (g *Graph) HasRelative(n *Node, tag string) bool {
 	return false
 }
 
+// GetRelative returns the relative node with the specified tag
 func (g *Graph) GetRelative(n *Node, tag string) (*Node, error) {
 	for _, e := range n.Edges {
 		if e.Nodes[1].Tag == tag {
@@ -218,6 +231,7 @@ func (g *Graph) GetRelative(n *Node, tag string) (*Node, error) {
 	return nil, NoEdgeError{fmt.Sprintf("No relative from %d with tag %s", n.ID, tag)}
 }
 
+// GetRelativeByID returns the relative node with the specified tag
 func (g *Graph) GetRelativeByID(n1 int, tag string) (*Node, error) {
 	n, err := g.GetNodeByID(n1)
 	if err != nil {
@@ -227,6 +241,7 @@ func (g *Graph) GetRelativeByID(n1 int, tag string) (*Node, error) {
 	return g.GetRelative(n, tag)
 }
 
+// GetEdge returns the edge from n1 to n2
 func (g *Graph) GetEdge(n1 *Node, n2 int) (*Edge, error) {
 	for _, e := range n1.Edges {
 		if e.Nodes[1].ID == n2 {
@@ -237,6 +252,7 @@ func (g *Graph) GetEdge(n1 *Node, n2 int) (*Edge, error) {
 	return nil, NoEdgeError{fmt.Sprintf("No edge from %d to %d", n1.ID, n2)}
 }
 
+// GetEdgeByNodeID returns the edge from n1 to n2
 func (g *Graph) GetEdgeByNodeID(n1, n2 int) (*Edge, error) {
 	n, err := g.GetNodeByID(n1)
 	if err != nil {
@@ -246,6 +262,7 @@ func (g *Graph) GetEdgeByNodeID(n1, n2 int) (*Edge, error) {
 	return g.GetEdge(n, n2)
 }
 
+// GetEdgeTags returns the tags on the edge from n1 to n2
 func (g *Graph) GetEdgeTags(n1 *Node, n2 int) (string, string, error) {
 	e, err := g.GetEdge(n1, n2)
 	if err != nil {
@@ -255,6 +272,7 @@ func (g *Graph) GetEdgeTags(n1 *Node, n2 int) (string, string, error) {
 	return e.Nodes[0].Tag, e.Nodes[1].Tag, nil
 }
 
+// GetEdgeTagsByNodeID returns the tags on the edge from n1 to n2
 func (g *Graph) GetEdgeTagsByNodeID(n1, n2 int) (string, string, error) {
 	n, err := g.GetNodeByID(n1)
 	if err != nil {
@@ -310,6 +328,9 @@ func (g *Graph) setEdgeHelper(n1, n2 *Node, w float64, t1, t2 string, bidirectio
 	return nil
 }
 
+// SetEdge creates a new edge from n1 to n2 with weight w, tags t1 and t2. If
+// bidirectional is true, then the reverse edge will also be created with the
+// same weight and the tags reversed
 func (g *Graph) SetEdge(n1, n2 *Node, w float64, t1, t2 string, bidirectional bool) error {
 	g.Lock.Lock()
 	defer g.Lock.Unlock()
@@ -317,6 +338,9 @@ func (g *Graph) SetEdge(n1, n2 *Node, w float64, t1, t2 string, bidirectional bo
 	return g.setEdgeHelper(n1, n2, w, t1, t2, bidirectional)
 }
 
+// SetEdgeByNodeID creates a new edge from n1 to n2 with weight w, tags t1 and t2. If
+// bidirectional is true, then the reverse edge will also be created with the
+// same weight and the tags reversed
 func (g *Graph) SetEdgeByNodeID(n1, n2 int, w float64, t1, t2 string, bidirectional bool) error {
 	node1, err := g.GetNodeByID(n1)
 	if err != nil {
@@ -330,6 +354,7 @@ func (g *Graph) SetEdgeByNodeID(n1, n2 int, w float64, t1, t2 string, bidirectio
 	return g.SetEdge(node1, node2, w, t1, t2, bidirectional)
 }
 
+// removeEdgeHelper2 is a non-locking, unidirectional version of remove edge
 func (g *Graph) removeEdgeHelper2(n1, n2 *Node) error {
 	_, err := g.GetEdge(n1, n2.ID)
 	_, ok := err.(NoEdgeError)
@@ -368,6 +393,7 @@ func (g *Graph) removeEdgeHelper(n1, n2 *Node, bidirectional bool) error {
 	return nil
 }
 
+// RemoveEdge removes the edge between n1 and n2
 func (g *Graph) RemoveEdge(n1, n2 *Node, bidirectional bool) error {
 	g.Lock.Lock()
 	defer g.Lock.Unlock()
@@ -375,6 +401,7 @@ func (g *Graph) RemoveEdge(n1, n2 *Node, bidirectional bool) error {
 	return g.removeEdgeHelper(n1, n2, bidirectional)
 }
 
+// RemoveEdgeByNodeID removes the edge between n1 and n2
 func (g *Graph) RemoveEdgeByNodeID(n1, n2 int, bidirectional bool) error {
 	node1, err := g.GetNodeByID(n1)
 	if err != nil {
@@ -457,7 +484,8 @@ func RandomUnidirectionalGraph(n, e, x, y int, w float64) *Graph {
 	return g
 }
 
-// Helpers for graph generation
+// ----- Helpers for random graph generation -----
+
 func grid2Nodes(idx, x int) (int, int) {
 	return idx % x, idx / x
 }
