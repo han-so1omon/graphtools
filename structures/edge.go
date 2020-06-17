@@ -10,7 +10,7 @@ import (
 // of node IDs and tags associated with an edge
 type NodeRepr struct {
 	Node *Node  `json:"-"` // Omit this from JSON to prevent cyclic structure
-	ID   int    `json:"value"`
+	ID   int    `json:"id"`
 	Tag  string `json:"tag"`
 }
 
@@ -22,7 +22,7 @@ type NodeRepr struct {
 // The first node is referred to as near, while the second node is referred to
 // as far
 type Edge struct {
-	Weight float64    `json:"value"`
+	Weight float64    `json:"weight"`
 	Nodes  []NodeRepr `json:"noderepr"`
 }
 

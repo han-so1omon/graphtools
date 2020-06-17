@@ -1,16 +1,23 @@
 package structures
 
 import (
+	"context"
 	"fmt"
+	"strings"
 	"sync"
 )
 
 const (
+	// RBTreeType names RBTree for use in API operations
+	RBTreeType = "red-black tree"
+	// DataNodeTag denotes the node as a data (non-nil) node
 	DataNodeTag = "data"
-	NilNodeTag  = "nil"
+	// NilNodeTag denotes the node as nil (i.e. leaf or parent of root)
+	NilNodeTag = "nil"
 )
 
 var (
+	// Tags holds the minimized versions of RBTree node relative tags
 	Tags map[string]string = map[string]string{
 		"root":   "r",
 		"parent": "p",
@@ -18,17 +25,23 @@ var (
 		"rchild": "cr",
 	}
 
+	// Colors holds the valid values for RBTree node color
 	Colors map[string]int8 = map[string]int8{
-		"red":   1,
-		"black": -1,
-		"nil":   0,
+		"nil":    -1,
+		"black":  0,
+		"red":    1,
+		"orange": 2,
+		"yellow": 3,
+		"green":  4,
+		"blue":   5,
+		"purple": 6,
 	}
 )
 
 // Color implements Data interface
 type ColorData struct {
-	Color  int8
-	Height int
+	Color  int8 `json:"color"`
+	Height int  `json:"height"`
 }
 
 func (c ColorData) GetData() interface{} {
@@ -110,29 +123,105 @@ func (r *rbIDDistributor) GetID(nodeTypeTag string) int {
 
 //TODO function to re-assign node heights during insertion and deletion
 type RBTree struct {
-	Root  *Node
-	Graph *Graph
+	Root  *Node  `json:"root"`
+	Graph *Graph `json:"graph"`
+	Type  string `json:"type"`
 
 	idDistributor     IDDistributor
 	Height            int `json:"height"`
 	numMaxHeightNodes int
 
-	Lock *sync.Mutex `json:"-"`
+	lock    *sync.Mutex
+	updated chan struct{}
+	cancel  context.CancelFunc
+	ctx     context.Context
 }
 
-func NewRBTree() *RBTree {
+func (t *RBTree) String() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n+ + + + +RBTree+ + + + +\n")
+	fmt.Fprintf(&b, "Type: %s\n", t.Type)
+	fmt.Fprintf(&b, "Root: %d\n", t.Root.ID)
+	fmt.Fprintf(&b, "Height: %d\n", t.Height)
+	b.WriteString(t.Graph.String())
+	fmt.Fprintf(&b, "+ + + + + + + + + + + + +\n")
+	return b.String()
+}
+
+func NewRBTree(ctx context.Context, cancel context.CancelFunc) *RBTree {
 	t := new(RBTree)
-	t.Lock = &sync.Mutex{}
+	t.lock = &sync.Mutex{}
 	t.idDistributor = &rbIDDistributor{0, -1}
 
+	t.updated = make(chan struct{})
+	t.cancel = cancel
+	t.ctx = ctx
 	t.Graph = NewGraph(1.0)
+	t.Type = RBTreeType
 
-	t.newNode(nil, Tags["root"], NilNodeTag, Colors["black"])
+	t.putNode(nil, Tags["root"], NilNodeTag, Colors["black"])
 
 	return t
 }
 
-func (t *RBTree) newNode(parent *Node, tag, nodeTypeTag string, color int8) error {
+// Updated will return a channel that receives whenever the graph is decided to
+// be updated
+func (t *RBTree) Updated() <-chan struct{} {
+	return t.updated
+}
+
+// OnUpdate is useful to be called when the graph is decided to be updated.
+// It is the prerogative of graph owners (i.e. end-users, accompanying
+// structures, or algorithms) to call OnUpdate()
+func (t *RBTree) OnUpdate() {
+	t.updated <- struct{}{}
+}
+
+// Done is useful to be called when the graph is decided to be done
+// It is the prerogative of graph owners (i.e. end-users, accompanying
+// structures, or algorithms) to call Done()
+func (t *RBTree) Done() {
+	close(t.updated)
+	t.cancel()
+}
+
+// Lock is useful to be called when the graph needs to be accessed as an atomic
+// structure
+func (t *RBTree) Lock() {
+	t.lock.Lock()
+}
+
+// Unlock removees the graph from the atomic locked state
+func (t *RBTree) Unlock() {
+	t.lock.Unlock()
+}
+
+func (t *RBTree) NewNode(nodeTypeTag string) (*Node, error) {
+	var id int
+	if nodeTypeTag == DataNodeTag {
+		id = t.idDistributor.(*rbIDDistributor).dataNodeCount
+		t.idDistributor.(*rbIDDistributor).dataNodeCount++
+	} else {
+		id = t.idDistributor.(*rbIDDistributor).nilNodeCount
+		t.idDistributor.(*rbIDDistributor).nilNodeCount--
+	}
+
+	data := ColorData{
+		Color:  Colors["red"],
+		Height: 0,
+	}
+	x := id
+	y := id
+	z := 0
+	n, err := t.Graph.SetNodeByID(id, x, y, z, data)
+	if err != nil {
+		return nil, err
+	}
+
+	return n, nil
+}
+
+func (t *RBTree) putNode(parent *Node, tag, nodeTypeTag string, color int8) error {
 	if color != Colors["red"] && color != Colors["black"] && color != Colors["nil"] {
 		return ColorDataError{fmt.Sprintf("Color %d is not a valid color", color)}
 	}
@@ -474,8 +563,8 @@ func (t *RBTree) rotateRight(n *Node) error {
 }
 
 func (t *RBTree) Insert(root *Node, n *Node) error {
-	t.Lock.Lock()
-	defer t.Lock.Unlock()
+	t.lock.Lock()
+	defer t.lock.Unlock()
 	err := t.insertRecurse(root, n)
 	if err != nil {
 		return err
@@ -544,8 +633,18 @@ func (t *RBTree) insertRecurse(root *Node, n *Node) error {
 		}
 	}
 
-	t.newNode(n, Tags["lchild"], NilNodeTag, Colors["nil"])
-	t.newNode(n, Tags["rchild"], NilNodeTag, Colors["nil"])
+	err = t.setColor(n, Colors["red"])
+	if err != nil {
+		return err
+	}
+	err = t.putNode(n, Tags["lchild"], NilNodeTag, Colors["nil"])
+	if err != nil {
+		return err
+	}
+	t.putNode(n, Tags["rchild"], NilNodeTag, Colors["nil"])
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

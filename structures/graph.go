@@ -1,6 +1,7 @@
 package structures
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -50,6 +51,79 @@ type Comparable interface {
 	GetValue() int
 }
 
+const (
+	// GenericGraphManagerType names the generic graph manager for use in API
+	// operations
+	GenericGraphManagerType = "generic"
+)
+
+type GraphDisplayManager interface {
+	Updated() <-chan struct{}
+	OnUpdate()
+	Done()
+	Lock()
+	Unlock()
+}
+
+type GenericGraphManager struct {
+	Graph *Graph
+	Type  string `json:"type"`
+
+	// Control structures
+	updated chan struct{}
+	cancel  context.CancelFunc
+	ctx     context.Context
+	lock    *sync.Mutex
+}
+
+func NewGenericGraphManager(
+	ctx context.Context,
+	cancel context.CancelFunc,
+	maxEdgeWeight float64,
+) *GenericGraphManager {
+	mgr := new(GenericGraphManager)
+	mgr.Graph = NewGraph(maxEdgeWeight)
+	mgr.Type = GenericGraphManagerType
+	mgr.lock = &sync.Mutex{}
+	mgr.updated = make(chan struct{})
+	mgr.cancel = cancel
+	mgr.ctx = ctx
+
+	return mgr
+}
+
+// Updated will return a channel that receives whenever the graph is decided to
+// be updated
+func (g *GenericGraphManager) Updated() <-chan struct{} {
+	return g.updated
+}
+
+// OnUpdate is useful to be called when the graph is decided to be updated.
+// It is the prerogative of graph owners (i.e. end-users, accompanying
+// structures, or algorithms) to call OnUpdate()
+func (g *GenericGraphManager) OnUpdate() {
+	g.updated <- struct{}{}
+}
+
+// Done is useful to be called when the graph is decided to be done
+// It is the prerogative of graph owners (i.e. end-users, accompanying
+// structures, or algorithms) to call Done()
+func (g *GenericGraphManager) Done() {
+	close(g.updated)
+	g.cancel()
+}
+
+// Lock is useful to be called when the graph needs to be accessed as an atomic
+// structure
+func (g *GenericGraphManager) Lock() {
+	g.lock.Lock()
+}
+
+// Unlock removees the graph from the atomic locked state
+func (g *GenericGraphManager) Unlock() {
+	g.lock.Unlock()
+}
+
 // Graph is the generalized node-edge data structure to power the algorithms and
 // structures built on the graphtools library
 type Graph struct {
@@ -59,9 +133,7 @@ type Graph struct {
 	Nodes         []*Node `json:"nodes"`
 
 	// Control structures
-	Lock    *sync.Mutex   `json:"-"`
-	Updated chan struct{} `json:"-"`
-	Done    chan struct{} `json:"-"`
+	Lock *sync.Mutex `json:"-"`
 }
 
 // String does a pretty print of the current graph
@@ -80,28 +152,11 @@ func NewGraph(maxEdgeWeight float64) *Graph {
 	rand.Seed(time.Now().UTC().UnixNano())
 	g := new(Graph)
 
-	// Create graph control structures
 	g.Lock = &sync.Mutex{}
-	g.Updated = make(chan struct{})
-	g.Done = make(chan struct{})
 
 	g.MaxEdgeWeight = maxEdgeWeight
 
 	return g
-}
-
-// GraphUpdated is useful to be called when the graph is decided to be updated.
-// It is the prerogative of graph owners (i.e. end-users, accompanying
-// structures, or algorithms) to call GraphUpdated()
-func (g *Graph) GraphUpdated() {
-	g.Updated <- struct{}{}
-}
-
-// GraphDone is useful to be called when the graph is decided to be done
-// It is the prerogative of graph owners (i.e. end-users, accompanying
-// structures, or algorithms) to call GraphDone()
-func (g *Graph) GraphDone() {
-	g.Done <- struct{}{}
 }
 
 // IsEmpty returns whether or not the graph is empty
@@ -418,68 +473,71 @@ func (g *Graph) RemoveEdgeByNodeID(n1, n2 int, bidirectional bool) error {
 // RandomUnidirectionalGraph creates a bidirectional graph
 // with n nodes, e edges, and m max value of an edge
 // with cartesian boundaries x and y
-func RandomUnidirectionalGraph(n, e, x, y int, w float64) *Graph {
+func RandomUnidirectionalGraph(
+	ctx context.Context, cancel context.CancelFunc, n, e, x, y int, w float64) *GenericGraphManager {
 	//TODO rewrite this with current graph-building tools
-	g := NewGraph(w)
-	g.NumNodes = n
-	g.NumEdges = e
-	g.MaxEdgeWeight = w
+	g := NewGenericGraphManager(ctx, cancel, w)
+	/*
+		g.NumNodes = n
+		g.NumEdges = e
+		g.MaxEdgeWeight = w
 
-	gridSize := x * y
-	openGridSet := make([]int, gridSize)
-	for i := range openGridSet {
-		openGridSet[i] = i
-	}
-	// Create graph nodes
-	for i := 0; i < n; i++ {
-		g.Nodes = append(g.Nodes, NewNode())
-		g.Nodes[i].ID = i
-
-		gridNum := rand.Intn(len(openGridSet))
-		gridIdx := openGridSet[gridNum]
-		xVal, yVal := grid2Nodes(gridIdx, x)
-		g.Nodes[i].Coords = Point{X: xVal, Y: yVal, Z: 0}
-
-		if gridNum == len(openGridSet) {
-			openGridSet = openGridSet[:gridNum]
-		} else {
-			openGridSet = append(openGridSet[:gridNum], openGridSet[gridNum+1:]...)
+		gridSize := x * y
+		openGridSet := make([]int, gridSize)
+		for i := range openGridSet {
+			openGridSet[i] = i
 		}
-	}
+		// Create graph nodes
+		for i := 0; i < n; i++ {
+			g.Nodes = append(g.Nodes, NewNode())
+			g.Nodes[i].ID = i
 
-	// Create edges
-	// Create set of all available edges
-	n2 := n * n
-	openEdgeSet := make([]int, n2)
-	for i := range openEdgeSet {
-		openEdgeSet[i] = i
-	}
+			gridNum := rand.Intn(len(openGridSet))
+			gridIdx := openGridSet[gridNum]
+			xVal, yVal := grid2Nodes(gridIdx, x)
+			g.Nodes[i].Coords = Point{X: xVal, Y: yVal, Z: 0}
 
-	// Pick edge from open set of available edges and remove from open set
-	// Add edge to nodes and add nodes to edge
-	for i := 0; i < e; i++ {
-		// Pick edge number from open set
-		edgeNum := rand.Intn(len(openEdgeSet))
-		// Translate edge number to edge index
-		edgeIdx := openEdgeSet[edgeNum]
-		// Create new edge
-		edge := NewEdge()
-		// Assign edge random value
-		edge.Weight = rand.Float64() * w
-		// Get node values from edge index
-		n1, n2 := edge2Nodes(edgeIdx, n)
-		// Add edge to starting node
-		g.Nodes[n1].AddEdge(edge)
-		// Add nodes to edge
-		edge.AddNodes(g.Nodes[n1], g.Nodes[n2], "sibling", "sibling")
-
-		// Remove edge from open set
-		if edgeNum == len(openEdgeSet) {
-			openEdgeSet = openEdgeSet[:edgeNum]
-		} else {
-			openEdgeSet = append(openEdgeSet[:edgeNum], openEdgeSet[edgeNum+1:]...)
+			if gridNum == len(openGridSet) {
+				openGridSet = openGridSet[:gridNum]
+			} else {
+				openGridSet = append(openGridSet[:gridNum], openGridSet[gridNum+1:]...)
+			}
 		}
-	}
+
+		// Create edges
+		// Create set of all available edges
+		n2 := n * n
+		openEdgeSet := make([]int, n2)
+		for i := range openEdgeSet {
+			openEdgeSet[i] = i
+		}
+
+		// Pick edge from open set of available edges and remove from open set
+		// Add edge to nodes and add nodes to edge
+		for i := 0; i < e; i++ {
+			// Pick edge number from open set
+			edgeNum := rand.Intn(len(openEdgeSet))
+			// Translate edge number to edge index
+			edgeIdx := openEdgeSet[edgeNum]
+			// Create new edge
+			edge := NewEdge()
+			// Assign edge random value
+			edge.Weight = rand.Float64() * w
+			// Get node values from edge index
+			n1, n2 := edge2Nodes(edgeIdx, n)
+			// Add edge to starting node
+			g.Nodes[n1].AddEdge(edge)
+			// Add nodes to edge
+			edge.AddNodes(g.Nodes[n1], g.Nodes[n2], "sibling", "sibling")
+
+			// Remove edge from open set
+			if edgeNum == len(openEdgeSet) {
+				openEdgeSet = openEdgeSet[:edgeNum]
+			} else {
+				openEdgeSet = append(openEdgeSet[:edgeNum], openEdgeSet[edgeNum+1:]...)
+			}
+		}
+	*/
 
 	return g
 }

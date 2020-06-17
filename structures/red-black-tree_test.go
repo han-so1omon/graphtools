@@ -1,7 +1,9 @@
 package structures
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"reflect"
 	"testing"
 )
@@ -14,9 +16,11 @@ func TestMain(m *testing.M) {
 */
 
 func TestRBTree(t *testing.T) {
+	log.Printf("Testing RBTree")
+	ctx, cancel := context.WithCancel(context.Background())
 
 	t.Run("New RBTree and node data", func(t *testing.T) {
-		tree := NewRBTree()
+		tree := NewRBTree(ctx, cancel)
 		// Check initial conditions
 		if tree.Height != 0 {
 			t.Fatalf("Tree must begin with height 0")
@@ -71,7 +75,7 @@ func TestRBTree(t *testing.T) {
 	})
 
 	t.Run("RBTree node getters and setters", func(t *testing.T) {
-		tree := NewRBTree()
+		tree := NewRBTree(ctx, cancel)
 		tree.newNode(tree.Root, Tags["lchild"], DataNodeTag, Colors["red"])
 		tree.newNode(tree.Root, Tags["rchild"], DataNodeTag, Colors["red"])
 
@@ -127,7 +131,7 @@ func TestRBTree(t *testing.T) {
 
 	t.Run("RBTree left rotations", func(t *testing.T) {
 		// Set up tree (level 0)
-		tree := NewRBTree()
+		tree := NewRBTree(ctx, cancel)
 		n1 := tree.Root
 
 		// Set up level 1
@@ -162,7 +166,7 @@ func TestRBTree(t *testing.T) {
 
 	t.Run("RBTree right rotations", func(t *testing.T) {
 		// Set up tree (level 0)
-		tree := NewRBTree()
+		tree := NewRBTree(ctx, cancel)
 		n1 := tree.Root
 
 		// Set up level 1
@@ -196,7 +200,7 @@ func TestRBTree(t *testing.T) {
 	})
 
 	t.Run("RBTree insertion case 4-2", func(t *testing.T) {
-		tree := newMockRBTree(t)
+		tree := newMockRBTree(ctx, cancel, t)
 		n, _ := tree.GetLChild(tree.Root)
 		n, _ = tree.GetLChild(n)
 		p, _ := tree.GetParent(n)
@@ -225,8 +229,8 @@ func TestRBTree(t *testing.T) {
 	})
 
 	t.Run("RBTree insertion case 4", func(t *testing.T) {
-		tree := newMockRBTree(t)
-		treeCopy := newMockRBTree(t)
+		tree := newMockRBTree(ctx, cancel, t)
+		treeCopy := newMockRBTree(ctx, cancel, t)
 		if !reflect.DeepEqual(tree.Graph.String(), treeCopy.Graph.String()) {
 			t.Fatalf("tree and treeCopy must be equal RBTree representations")
 		}
@@ -258,7 +262,7 @@ func TestRBTree(t *testing.T) {
 	})
 	t.Run("RBTree insertion case 1", func(t *testing.T) {
 		// nearly trivial
-		tree := newMockRBTree(t)
+		tree := newMockRBTree(ctx, cancel, t)
 		n, _ := tree.GetLChild(tree.Root)
 		err := tree.insertCase1(n)
 		nData, _ := ColorDataFromData(n.Extra)
@@ -291,7 +295,7 @@ func TestRBTree(t *testing.T) {
 	//func (t *RBTree) insertCase3(n *Node) error {
 
 	t.Run("RBTree replaceNode", func(t *testing.T) {
-		tree := newMockRBTree(t)
+		tree := newMockRBTree(ctx, cancel, t)
 		n := tree.Root
 		p, _ := tree.GetParent(n)
 		n1, _ := tree.GetLChild(n)
@@ -312,13 +316,13 @@ func TestRBTree(t *testing.T) {
 	})
 
 	t.Run("RBTree deleteCase6", func(t *testing.T) {
-		tree := newMockRBTree(t)
+		tree := newMockRBTree(ctx, cancel, t)
 		n := tree.Root
 		n, _ = tree.GetLChild(n)
 		n1, _ := tree.GetLChild(n)
 		tree.deleteCase6(n1)
 
-		treeCopy := newMockRBTree(t)
+		treeCopy := newMockRBTree(ctx, cancel, t)
 		n = treeCopy.Root
 		n, _ = tree.GetLChild(n)
 		n1, _ = treeCopy.GetLChild(n)
@@ -336,47 +340,47 @@ func TestRBTree(t *testing.T) {
 	//func (t *RBTree) deleteCase6(n *Node) error {
 
 	t.Run("RBTree deleteCase5", func(t *testing.T) {
-		//tree := newMockRBTree(t)
+		//tree := newMockRBTree(ctx, cancel, t)
 		fmt.Println("TODO")
 	})
 	//func (t *RBTree) deleteCase5(n *Node) error {
 
 	t.Run("RBTree deleteCase4", func(t *testing.T) {
-		//tree := newMockRBTree(t)
+		//tree := newMockRBTree(ctx, cancel, t)
 		fmt.Println("TODO")
 	})
 	//func (t *RBTree) deleteCase4(n *Node) error {
 
 	t.Run("RBTree deleteCase3", func(t *testing.T) {
-		//tree := newMockRBTree(t)
+		//tree := newMockRBTree(ctx, cancel, t)
 		fmt.Println("TODO")
 	})
 	//func (t *RBTree) deleteCase3(n *Node) error {
 
 	t.Run("RBTree deleteCase2", func(t *testing.T) {
-		//tree := newMockRBTree(t)
+		//tree := newMockRBTree(ctx, cancel, t)
 		fmt.Println("TODO")
 	})
 	//func (t *RBTree) deleteCase2(n *Node) error {
 
 	t.Run("RBTree deleteCase1", func(t *testing.T) {
-		//tree := newMockRBTree(t)
+		//tree := newMockRBTree(ctx, cancel, t)
 		fmt.Println("TODO")
 	})
 	//func (t *RBTree) deleteCase1(n *Node) error {
 
 	t.Run("RBTree DeleteOneChild", func(t *testing.T) {
-		//tree := newMockRBTree(t)
+		//tree := newMockRBTree(ctx, cancel, t)
 		fmt.Println("TODO")
 	})
 
 	fmt.Println()
 }
 
-func newMockRBTree(t *testing.T) *RBTree {
+func newMockRBTree(ctx context.Context, cancel context.CancelFunc, t *testing.T) *RBTree {
 	t.Helper()
 
-	tree := NewRBTree()
+	tree := NewRBTree(ctx, cancel)
 	tree.GetParent(tree.Root)
 
 	// Set up level 1

@@ -37,8 +37,8 @@ type Point struct {
 }
 
 type Node struct {
-	ID     int `json:"value"`
-	Extra  Data
+	ID     int     `json:"id"`
+	Extra  Data    `json:"extra"`
 	Coords Point   `json:"coords"`
 	Edges  []*Edge `json:"edges"`
 }

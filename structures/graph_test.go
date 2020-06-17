@@ -15,6 +15,7 @@ func TestMain(m *testing.M) {
 
 func TestGraph(t *testing.T) {
 	log.Printf("Testing generalized graph")
+
 	t.Run("Set graph nodes", func(t *testing.T) {
 		g := NewGraph(100)
 		if !g.IsEmpty() {
