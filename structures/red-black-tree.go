@@ -216,6 +216,8 @@ func (t *RBTree) Unlock() {
 }
 
 func (t *RBTree) NewNode(nodeTypeTag string) (*Node, error) {
+	t.Lock()
+	defer t.Unlock()
 	var id int
 	if nodeTypeTag == DataNodeTag {
 		id = t.idDistributor.(*rbIDDistributor).dataNodeCount
@@ -252,6 +254,7 @@ func (t *RBTree) putNode(parent *Node, tag, nodeTypeTag string, color int8) erro
 			return &RootInsertError{nil}
 		}
 		id := t.idDistributor.(*rbIDDistributor).dataNodeCount
+		t.idDistributor.(*rbIDDistributor).dataNodeCount++
 		x := id
 		y := id
 		z := 0
@@ -270,6 +273,7 @@ func (t *RBTree) putNode(parent *Node, tag, nodeTypeTag string, color int8) erro
 
 		// Set nil node as parent of root
 		id = t.idDistributor.(*rbIDDistributor).nilNodeCount
+		t.idDistributor.(*rbIDDistributor).nilNodeCount--
 		x = id
 		y = id
 		z = 0
@@ -283,8 +287,36 @@ func (t *RBTree) putNode(parent *Node, tag, nodeTypeTag string, color int8) erro
 			return &NilNodeError{"Problem setting nil parent of root node", err}
 		}
 
-		t.idDistributor.(*rbIDDistributor).dataNodeCount++
+		// Set nil nodes as children of root
+		id = t.idDistributor.(*rbIDDistributor).nilNodeCount
 		t.idDistributor.(*rbIDDistributor).nilNodeCount--
+		x = id
+		y = id
+		z = 0
+		data = ColorData{
+			Color:  Colors["nil"],
+			Height: 1,
+		}
+		rc, err := t.Graph.SetNodeByID(id, x, y, z, data)
+		err = t.setRChild(n, rc, true)
+		if err != nil {
+			return &NilNodeError{"Problem setting right child of root node", err}
+		}
+		id = t.idDistributor.(*rbIDDistributor).nilNodeCount
+		t.idDistributor.(*rbIDDistributor).nilNodeCount--
+		x = id
+		y = id
+		z = 0
+		data = ColorData{
+			Color:  Colors["nil"],
+			Height: 1,
+		}
+		lc, err := t.Graph.SetNodeByID(id, x, y, z, data)
+		err = t.setLChild(n, lc, true)
+		if err != nil {
+			return &NilNodeError{"Problem setting left child of root node", err}
+		}
+
 		return nil
 	} else if parent == nil {
 		return &NilNodeError{"Cannot insert node with nil parent unless node is root", nil}
@@ -586,7 +618,7 @@ func (t *RBTree) Insert(root *Node, n *Node) error {
 	defer t.lock.Unlock()
 	err := t.insertRecurse(root, n)
 	if err != nil {
-		return err
+		return fmt.Errorf("Insert: %w", err)
 	}
 
 	err = t.insertRepairTree(n)
@@ -595,17 +627,23 @@ func (t *RBTree) Insert(root *Node, n *Node) error {
 	}
 
 	root = n
-	isNil, ok := t.NodeIsNil(root)
+	rootParent, err := t.GetParent(root)
+	if err != nil {
+		return fmt.Errorf("Insert: %w", err)
+	}
+	isNil, ok := t.NodeIsNil(rootParent)
 	for ok && !isNil {
-		root, err = t.GetParent(root)
+		root = rootParent
+		rootParent, err = t.GetParent(root)
 		if err != nil {
-			return err
+			return fmt.Errorf("Insert: %w", err)
 		}
-		root = n
+		isNil, ok = t.NodeIsNil(rootParent)
 	}
 	if !ok {
 		return &DataError{nil}
 	}
+	fmt.Println("here")
 
 	t.Root = root
 	return nil
@@ -681,33 +719,36 @@ func (t *RBTree) insertRepairTree(n *Node) error {
 	if !ok {
 		return &DataError{nil}
 	}
-
-	u, err := t.GetUncle(n)
-	// uncle may not exist, so proceed if we find NilNodeError for
-	// uncle
-	var errCheck *NilNodeError
-	errCheckOk := errors.As(err, &errCheck)
-	if err != nil && !errCheckOk {
-		return err
-	}
-	uncleData, ok := ColorDataFromData(u.Extra)
-	if !ok {
-		return &DataError{nil}
-	}
-	uncleIsNil, ok := t.NodeIsNil(u)
-	if !ok {
-		return &DataError{nil}
-	}
-
 	if parentIsNil {
 		return t.insertCase1(n)
 	} else if parentData.Color == Colors["black"] {
 		return t.insertCase2(n)
-	} else if !uncleIsNil && uncleData.Color == Colors["red"] {
-		return t.insertCase3(n)
-	} else {
-		return t.insertCase4(n)
 	}
+
+	u, err := t.GetUncle(n)
+
+	if err == nil {
+		uncleData, ok := ColorDataFromData(u.Extra)
+		if !ok {
+			return &DataError{nil}
+		}
+		uncleIsNil, ok := t.NodeIsNil(u)
+		if !ok {
+			return &DataError{nil}
+		}
+		if !uncleIsNil && uncleData.Color == Colors["red"] {
+			return t.insertCase3(n)
+		}
+	}
+
+	// Proceed if err above was just NilNodeError because uncle doesn't exist
+	// If not, then error was legitimate and return err
+	var errCheck *NilNodeError
+	errCheckOk := errors.As(err, &errCheck)
+	if !errCheckOk {
+		return err
+	}
+	return t.insertCase4(n)
 }
 
 func (t *RBTree) insertCase1(n *Node) error {
@@ -872,6 +913,8 @@ func (t *RBTree) replaceNode(n, child *Node) error {
 }
 
 func (t *RBTree) DeleteOneChild(n *Node) error {
+	t.Lock()
+	defer t.Unlock()
 	// Precondition: n has at most one non-leaf child
 	var child *Node
 	var err error

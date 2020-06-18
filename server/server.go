@@ -75,27 +75,25 @@ func handleInstruction(
 			*g = structures.NewRBTree(ctx, cancel)
 		case "Insert":
 			t := (*g).(*structures.RBTree)
-			t.Lock()
 			n, err := t.NewNode(structures.DataNodeTag)
-			t.Unlock()
 			if err != nil {
 				log.Println("Error getting new node for insertion into tree")
 				return
 			}
 			err = t.Insert(t.Root, n)
 			if err != nil {
-				log.Println("Error inserting into tree", err)
+				log.Println("Error inserting into tree: ", err)
 				return
 			}
 		case "DeleteOneChild":
 			t := (*g).(*structures.RBTree)
-			t.Lock()
+			log.Println(t.Graph)
 			err = t.DeleteOneChild(t.Root)
-			t.Unlock()
 			if err != nil {
 				log.Println("Error deleting from tree", err)
 				return
 			}
+			log.Println(t.Graph)
 		}
 	} else if instruction.Structure == structures.GenericGraphManagerType {
 	}
