@@ -2,6 +2,7 @@ package structures
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -58,53 +59,71 @@ func ColorDataFromData(d Data) (ColorData, bool) {
 
 type ColorDataError struct {
 	msg string
+	Err error
 }
 
-func (e ColorDataError) Error() string {
-	return "RBTree: " + e.msg
+func (e *ColorDataError) Error() string {
+	return fmt.Sprintf(e.msg+": %v", e.Err)
 }
+
+func (e *ColorDataError) Unwrap() error { return e.Err }
 
 type NilNodeError struct {
 	msg string
+	Err error
 }
 
-func (e NilNodeError) Error() string {
-	return "RBTree: " + e.msg
+func (e *NilNodeError) Error() string {
+	return fmt.Sprintf(e.msg+": %v", e.Err)
 }
 
-type RootInsertError struct{}
+func (e *NilNodeError) Unwrap() error { return e.Err }
 
-func (e RootInsertError) Error() string {
-	return "RBTree: Cannot reinsert root node"
+type RootInsertError struct {
+	Err error
 }
+
+func (e *RootInsertError) Error() string {
+	return fmt.Sprintf("Cannot reinsert root node into RBTree: %v", e.Err)
+}
+
+func (e *RootInsertError) Unwrap() error { return e.Err }
 
 type TagError struct {
 	tag string
+	Err error
 }
 
-func (e TagError) Error() string {
+func (e *TagError) Error() string {
 	return fmt.Sprintf(
-		"RBTree: Tag is type %s. Must be %s, %s, %s, or %s",
+		"RBTree node tag is type %s. Must be %s, %s, %s, or %s: %v",
 		e.tag,
 		Tags["root"],
 		Tags["parent"],
 		Tags["lchild"],
 		Tags["rchild"],
+		e.Err,
 	)
 }
+
+func (e *TagError) Unwrap() error { return e.Err }
 
 type NodeTypeTagError struct {
 	nodeTag string
+	Err     error
 }
 
-func (e NodeTypeTagError) Error() string {
+func (e *NodeTypeTagError) Error() string {
 	return fmt.Sprintf(
-		"RBTree: NodeTypeTag is type %s. Must be %s or %s",
+		"NodeTypeTag is type %s. Must be %s or %s: %v",
 		e.nodeTag,
 		DataNodeTag,
 		NilNodeTag,
+		e.Err,
 	)
 }
+
+func (e *NodeTypeTagError) Unwrap() error { return e.Err }
 
 type rbIDDistributor struct {
 	// dataNodeCount distributes positive ID values to data nodes
@@ -223,14 +242,14 @@ func (t *RBTree) NewNode(nodeTypeTag string) (*Node, error) {
 
 func (t *RBTree) putNode(parent *Node, tag, nodeTypeTag string, color int8) error {
 	if color != Colors["red"] && color != Colors["black"] && color != Colors["nil"] {
-		return ColorDataError{fmt.Sprintf("Color %d is not a valid color", color)}
+		return &ColorDataError{fmt.Sprintf("Color %d is not a valid color", color), nil}
 	}
 
 	var err error
 	// Handle root insert
 	if parent == nil && tag == Tags["root"] {
 		if t.Root != nil {
-			return RootInsertError{}
+			return &RootInsertError{nil}
 		}
 		id := t.idDistributor.(*rbIDDistributor).dataNodeCount
 		x := id
@@ -261,29 +280,29 @@ func (t *RBTree) putNode(parent *Node, tag, nodeTypeTag string, color int8) erro
 		p, err := t.Graph.SetNodeByID(id, x, y, z, data)
 		err = t.setRChild(p, n, true)
 		if err != nil {
-			return NilNodeError{"Problem setting nil parent of root node. " + err.Error()}
+			return &NilNodeError{"Problem setting nil parent of root node", err}
 		}
 
 		t.idDistributor.(*rbIDDistributor).dataNodeCount++
 		t.idDistributor.(*rbIDDistributor).nilNodeCount--
 		return nil
 	} else if parent == nil {
-		return NilNodeError{"Cannot insert node with nil parent unless node is root"}
+		return &NilNodeError{"Cannot insert node with nil parent unless node is root", nil}
 	}
 
 	// Get parent data to determine height
 	parentData, ok := ColorDataFromData(parent.Extra)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 
 	// Set data node or nil node
 	if tag != Tags["rchild"] && tag != Tags["lchild"] {
-		return TagError{tag}
+		return &TagError{tag, nil}
 	}
 
 	if nodeTypeTag != DataNodeTag && nodeTypeTag != NilNodeTag {
-		return NodeTypeTagError{nodeTypeTag}
+		return &NodeTypeTagError{nodeTypeTag, nil}
 	}
 
 	var id, x, y, z, height int
@@ -378,7 +397,7 @@ func (t *RBTree) GetLChild(n *Node) (*Node, error) {
 func (t *RBTree) GetSibling(n *Node) (*Node, error) {
 	// No sibling if n is root
 	if n == t.Root {
-		return nil, NilNodeError{"Root node has no siblings"}
+		return nil, &NilNodeError{"Root node has no siblings", nil}
 	}
 
 	p, err := t.GetParent(n)
@@ -418,7 +437,7 @@ func (t *RBTree) setLChild(np, nrc *Node, bidirectional bool) error {
 func (t *RBTree) setColor(n *Node, color int8) error {
 	c, ok := ColorDataFromData(n.Extra)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 	c.Color = color
 	t.Graph.SetNode(n, n.ID, n.Coords.X, n.Coords.Y, n.Coords.Z, c)
@@ -438,11 +457,11 @@ func (t *RBTree) rotateLeft(n *Node) error {
 
 	isNil, ok := t.NodeIsNil(nnew)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 
 	if isNil {
-		return NilNodeError{fmt.Sprintf("%d has no edge %s", n.ID, Tags["rchild"])}
+		return &NilNodeError{fmt.Sprintf("%d has no edge %s", n.ID, Tags["rchild"]), nil}
 	}
 
 	nnewLeft, err := t.GetLChild(nnew)
@@ -506,11 +525,11 @@ func (t *RBTree) rotateRight(n *Node) error {
 
 	isNil, ok := t.NodeIsNil(nnew)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 
 	if isNil {
-		return NilNodeError{fmt.Sprintf("%d has no edge %s", n.ID, Tags["rchild"])}
+		return &NilNodeError{fmt.Sprintf("%d has no edge %s", n.ID, Tags["rchild"]), nil}
 	}
 
 	nnewRight, err := t.GetRChild(nnew)
@@ -585,7 +604,7 @@ func (t *RBTree) Insert(root *Node, n *Node) error {
 		root = n
 	}
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 
 	t.Root = root
@@ -595,7 +614,7 @@ func (t *RBTree) Insert(root *Node, n *Node) error {
 func (t *RBTree) insertRecurse(root *Node, n *Node) error {
 	isNil, ok := t.NodeIsNil(root)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 
 	var child *Node
@@ -616,7 +635,7 @@ func (t *RBTree) insertRecurse(root *Node, n *Node) error {
 		}
 		isNil, ok = t.NodeIsNil(child)
 		if !ok {
-			return DataError{}
+			return &DataError{nil}
 		}
 		if !isNil {
 			return t.insertRecurse(child, n)
@@ -651,33 +670,33 @@ func (t *RBTree) insertRecurse(root *Node, n *Node) error {
 
 func (t *RBTree) insertRepairTree(n *Node) error {
 	p, err := t.GetParent(n)
-	_, ok := err.(NoNodeError)
 	if err != nil { // node must have parent
 		return err
 	}
 	parentData, ok := ColorDataFromData(p.Extra)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 	parentIsNil, ok := t.NodeIsNil(p)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 
 	u, err := t.GetUncle(n)
-	_, ok = err.(NilNodeError)
 	// uncle may not exist, so proceed if we find NilNodeError for
 	// uncle
-	if err != nil && !ok {
+	var errCheck *NilNodeError
+	errCheckOk := errors.As(err, &errCheck)
+	if err != nil && !errCheckOk {
 		return err
 	}
 	uncleData, ok := ColorDataFromData(u.Extra)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 	uncleIsNil, ok := t.NodeIsNil(u)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 
 	if parentIsNil {
@@ -867,7 +886,7 @@ func (t *RBTree) DeleteOneChild(n *Node) error {
 			return err
 		}
 	} else {
-		return NilNodeError{fmt.Sprintf("Node %d must have at least one child", n.ID)}
+		return &NilNodeError{fmt.Sprintf("Node %d must have at least one child", n.ID), nil}
 	}
 
 	err = t.replaceNode(n, child)
@@ -877,11 +896,11 @@ func (t *RBTree) DeleteOneChild(n *Node) error {
 
 	nodeData, ok := ColorDataFromData(n.Extra)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 	childData, ok := ColorDataFromData(child.Extra)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 
 	if nodeData.Color == Colors["black"] {
@@ -902,12 +921,12 @@ func (t *RBTree) DeleteOneChild(n *Node) error {
 func (t *RBTree) deleteCase1(n *Node) error {
 	_, err := t.GetParent(n)
 	// NoEdgeError is acceptable, as it means that the parent does not exist
-	_, ok := err.(NoEdgeError)
-	// Make sure there is not an unexpected error
-	if err != nil && !ok {
-		return err
-	} else if ok {
+	var errCheck *NoEdgeError
+	if errors.As(err, &errCheck) {
 		return nil
+	} else if err != nil {
+		// Make sure there is not an unexpected error
+		return err
 	}
 
 	t.deleteCase2(n)
@@ -927,7 +946,7 @@ func (t *RBTree) deleteCase2(n *Node) error {
 
 	sData, ok := ColorDataFromData(s.Extra)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 	if sData.Color == Colors["red"] {
 		err = t.setColor(p, Colors["red"])
@@ -964,7 +983,7 @@ func (t *RBTree) deleteCase3(n *Node) error {
 	}
 	sData, ok := ColorDataFromData(s.Extra)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 
 	p, err := t.GetParent(n)
@@ -973,7 +992,7 @@ func (t *RBTree) deleteCase3(n *Node) error {
 	}
 	pData, ok := ColorDataFromData(p.Extra)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 
 	rc, err := t.GetRChild(n)
@@ -982,7 +1001,7 @@ func (t *RBTree) deleteCase3(n *Node) error {
 	}
 	rcData, ok := ColorDataFromData(rc.Extra)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 
 	lc, err := t.GetLChild(n)
@@ -991,7 +1010,7 @@ func (t *RBTree) deleteCase3(n *Node) error {
 	}
 	lcData, ok := ColorDataFromData(lc.Extra)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 
 	if (pData.Color == Colors["black"]) &&
@@ -1003,9 +1022,9 @@ func (t *RBTree) deleteCase3(n *Node) error {
 			return err
 		}
 		return t.deleteCase1(p)
-	} else {
-		return t.deleteCase4(n)
 	}
+
+	return t.deleteCase4(n)
 }
 
 func (t *RBTree) deleteCase4(n *Node) error {
@@ -1015,7 +1034,7 @@ func (t *RBTree) deleteCase4(n *Node) error {
 	}
 	sData, ok := ColorDataFromData(s.Extra)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 
 	p, err := t.GetParent(n)
@@ -1024,7 +1043,7 @@ func (t *RBTree) deleteCase4(n *Node) error {
 	}
 	pData, ok := ColorDataFromData(p.Extra)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 
 	rc, err := t.GetRChild(n)
@@ -1033,7 +1052,7 @@ func (t *RBTree) deleteCase4(n *Node) error {
 	}
 	rcData, ok := ColorDataFromData(rc.Extra)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 
 	lc, err := t.GetLChild(n)
@@ -1042,7 +1061,7 @@ func (t *RBTree) deleteCase4(n *Node) error {
 	}
 	lcData, ok := ColorDataFromData(lc.Extra)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 
 	if (pData.Color == Colors["red"]) &&
@@ -1071,7 +1090,7 @@ func (t *RBTree) deleteCase5(n *Node) error {
 	}
 	sData, ok := ColorDataFromData(s.Extra)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 
 	p, err := t.GetParent(n)
@@ -1089,7 +1108,7 @@ func (t *RBTree) deleteCase5(n *Node) error {
 	}
 	sRcData, ok := ColorDataFromData(sRc.Extra)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 
 	sLc, err := t.GetLChild(s)
@@ -1098,7 +1117,7 @@ func (t *RBTree) deleteCase5(n *Node) error {
 	}
 	sLcData, ok := ColorDataFromData(sLc.Extra)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 
 	if sData.Color == Colors["black"] {
@@ -1143,7 +1162,7 @@ func (t *RBTree) deleteCase6(n *Node) error {
 	}
 	pData, ok := ColorDataFromData(p.Extra)
 	if !ok {
-		return DataError{}
+		return &DataError{nil}
 	}
 	n2pTag, _, err := t.Graph.GetEdgeTags(n, p.ID)
 	if err != nil {
@@ -1168,7 +1187,7 @@ func (t *RBTree) deleteCase6(n *Node) error {
 		}
 		_, ok = ColorDataFromData(sRc.Extra)
 		if !ok {
-			return DataError{}
+			return &DataError{nil}
 		}
 
 		err = t.setColor(sRc, Colors["black"])
@@ -1183,7 +1202,7 @@ func (t *RBTree) deleteCase6(n *Node) error {
 		}
 		_, ok = ColorDataFromData(sLc.Extra)
 		if !ok {
-			return DataError{}
+			return &DataError{nil}
 		}
 
 		err = t.setColor(sLc, Colors["black"])

@@ -30,38 +30,38 @@ func TestRBTree(t *testing.T) {
 		}
 
 		// Try to add child with correct tags
-		err := tree.newNode(tree.Root, Tags["lchild"], DataNodeTag, Colors["red"])
+		err := tree.putNode(tree.Root, Tags["lchild"], DataNodeTag, Colors["red"])
 		if err != nil {
 			t.Fatalf("Could not add data child to tree")
 		}
 
 		// Try to add child with incorrect tags
 		var ok bool
-		err = tree.newNode(tree.Root, "faketag", DataNodeTag, Colors["red"])
-		_, ok = err.(TagError)
+		err = tree.putNode(tree.Root, "faketag", DataNodeTag, Colors["red"])
+		_, ok = err.(*TagError)
 		if !ok {
-			t.Fatalf("newNode with a fake tag should fail with DataError")
+			t.Fatalf("putNode with a fake tag should fail with DataError")
 		}
 
 		// Try to add child with incorrect node types
-		err = tree.newNode(tree.Root, Tags["lchild"], "fakenodetype", Colors["red"])
-		_, ok = err.(NodeTypeTagError)
+		err = tree.putNode(tree.Root, Tags["lchild"], "fakenodetype", Colors["red"])
+		_, ok = err.(*NodeTypeTagError)
 		if !ok {
-			t.Fatalf("newNode with a node type tag should fail with NodeTypeTagError")
+			t.Fatalf("putNode with a node type tag should fail with NodeTypeTagError")
 		}
 
 		// Try to add second root node
-		err = tree.newNode(nil, Tags["root"], DataNodeTag, Colors["red"])
-		_, ok = err.(RootInsertError)
+		err = tree.putNode(nil, Tags["root"], DataNodeTag, Colors["red"])
+		_, ok = err.(*RootInsertError)
 		if !ok {
-			t.Fatalf("newNode fail with RootInsertError when attempting to add second root node")
+			t.Fatalf("putNode fail with RootInsertError when attempting to add second root node")
 		}
 
 		// Try to add second node with nil parent
-		err = tree.newNode(nil, Tags["lchild"], DataNodeTag, Colors["red"])
-		_, ok = err.(NilNodeError)
+		err = tree.putNode(nil, Tags["lchild"], DataNodeTag, Colors["red"])
+		_, ok = err.(*NilNodeError)
 		if !ok {
-			t.Fatalf("newNode fail with NilNodeError when attempting to add second root node")
+			t.Fatalf("putNode fail with NilNodeError when attempting to add second root node")
 		}
 
 		isNil, ok := tree.NodeIsNil(tree.Root)
@@ -76,8 +76,8 @@ func TestRBTree(t *testing.T) {
 
 	t.Run("RBTree node getters and setters", func(t *testing.T) {
 		tree := NewRBTree(ctx, cancel)
-		tree.newNode(tree.Root, Tags["lchild"], DataNodeTag, Colors["red"])
-		tree.newNode(tree.Root, Tags["rchild"], DataNodeTag, Colors["red"])
+		tree.putNode(tree.Root, Tags["lchild"], DataNodeTag, Colors["red"])
+		tree.putNode(tree.Root, Tags["rchild"], DataNodeTag, Colors["red"])
 
 		parent, err := tree.GetParent(tree.Root)
 		if err != nil {
@@ -135,16 +135,16 @@ func TestRBTree(t *testing.T) {
 		n1 := tree.Root
 
 		// Set up level 1
-		tree.newNode(tree.Root, Tags["lchild"], DataNodeTag, Colors["red"])
-		tree.newNode(tree.Root, Tags["rchild"], DataNodeTag, Colors["red"])
+		tree.putNode(tree.Root, Tags["lchild"], DataNodeTag, Colors["red"])
+		tree.putNode(tree.Root, Tags["rchild"], DataNodeTag, Colors["red"])
 		n11, _ := tree.GetLChild(tree.Root)
 		n12, _ := tree.GetRChild(tree.Root)
 
 		// Set up level 2
-		tree.newNode(n11, Tags["lchild"], DataNodeTag, Colors["black"])
-		tree.newNode(n11, Tags["rchild"], DataNodeTag, Colors["black"])
-		tree.newNode(n12, Tags["lchild"], DataNodeTag, Colors["black"])
-		tree.newNode(n12, Tags["rchild"], DataNodeTag, Colors["black"])
+		tree.putNode(n11, Tags["lchild"], DataNodeTag, Colors["black"])
+		tree.putNode(n11, Tags["rchild"], DataNodeTag, Colors["black"])
+		tree.putNode(n12, Tags["lchild"], DataNodeTag, Colors["black"])
+		tree.putNode(n12, Tags["rchild"], DataNodeTag, Colors["black"])
 
 		// Try rotation on level 0
 		//FIXME node number naming
@@ -170,16 +170,16 @@ func TestRBTree(t *testing.T) {
 		n1 := tree.Root
 
 		// Set up level 1
-		tree.newNode(tree.Root, Tags["lchild"], DataNodeTag, Colors["red"])
-		tree.newNode(tree.Root, Tags["rchild"], DataNodeTag, Colors["red"])
+		tree.putNode(tree.Root, Tags["lchild"], DataNodeTag, Colors["red"])
+		tree.putNode(tree.Root, Tags["rchild"], DataNodeTag, Colors["red"])
 		n11, _ := tree.GetLChild(tree.Root)
 		n12, _ := tree.GetRChild(tree.Root)
 
 		// Set up level 2
-		tree.newNode(n11, Tags["lchild"], DataNodeTag, Colors["black"])
-		tree.newNode(n11, Tags["rchild"], DataNodeTag, Colors["black"])
-		tree.newNode(n12, Tags["lchild"], DataNodeTag, Colors["black"])
-		tree.newNode(n12, Tags["rchild"], DataNodeTag, Colors["black"])
+		tree.putNode(n11, Tags["lchild"], DataNodeTag, Colors["black"])
+		tree.putNode(n11, Tags["rchild"], DataNodeTag, Colors["black"])
+		tree.putNode(n12, Tags["lchild"], DataNodeTag, Colors["black"])
+		tree.putNode(n12, Tags["rchild"], DataNodeTag, Colors["black"])
 
 		// Try rotation on level 0
 		//FIXME node number naming
@@ -304,7 +304,7 @@ func TestRBTree(t *testing.T) {
 			t.Fatalf(fmt.Sprintf("Could not successfully do replaceNode on %d", n.ID))
 		}
 		_, _, err = tree.Graph.GetEdgeTags(n, p.ID)
-		_, ok := err.(NoEdgeError)
+		_, ok := err.(*NoEdgeError)
 		if !ok {
 			t.Fatalf(fmt.Sprintf("No edge should exist between %d and %d", n.ID, p.ID))
 		}
@@ -384,8 +384,8 @@ func newMockRBTree(ctx context.Context, cancel context.CancelFunc, t *testing.T)
 	tree.GetParent(tree.Root)
 
 	// Set up level 1
-	tree.newNode(tree.Root, Tags["lchild"], DataNodeTag, Colors["red"])
-	tree.newNode(tree.Root, Tags["rchild"], DataNodeTag, Colors["red"])
+	tree.putNode(tree.Root, Tags["lchild"], DataNodeTag, Colors["red"])
+	tree.putNode(tree.Root, Tags["rchild"], DataNodeTag, Colors["red"])
 	n11, err := tree.GetLChild(tree.Root)
 	if err != nil {
 		t.Fatalf("Unable to create mock RBTree")
@@ -396,10 +396,10 @@ func newMockRBTree(ctx context.Context, cancel context.CancelFunc, t *testing.T)
 	}
 
 	// Set up level 2
-	tree.newNode(n11, Tags["lchild"], DataNodeTag, Colors["black"])
-	tree.newNode(n11, Tags["rchild"], DataNodeTag, Colors["black"])
-	tree.newNode(n12, Tags["lchild"], DataNodeTag, Colors["black"])
-	tree.newNode(n12, Tags["rchild"], DataNodeTag, Colors["black"])
+	tree.putNode(n11, Tags["lchild"], DataNodeTag, Colors["black"])
+	tree.putNode(n11, Tags["rchild"], DataNodeTag, Colors["black"])
+	tree.putNode(n12, Tags["lchild"], DataNodeTag, Colors["black"])
+	tree.putNode(n12, Tags["rchild"], DataNodeTag, Colors["black"])
 
 	n111, err := tree.GetLChild(n11)
 	if err != nil {
@@ -420,14 +420,14 @@ func newMockRBTree(ctx context.Context, cancel context.CancelFunc, t *testing.T)
 	}
 
 	// Set up level 3
-	tree.newNode(n111, Tags["lchild"], DataNodeTag, Colors["red"])
-	tree.newNode(n111, Tags["rchild"], DataNodeTag, Colors["red"])
-	tree.newNode(n112, Tags["lchild"], DataNodeTag, Colors["red"])
-	tree.newNode(n112, Tags["rchild"], DataNodeTag, Colors["red"])
-	tree.newNode(n121, Tags["lchild"], DataNodeTag, Colors["red"])
-	tree.newNode(n121, Tags["rchild"], DataNodeTag, Colors["red"])
-	tree.newNode(n122, Tags["lchild"], DataNodeTag, Colors["red"])
-	tree.newNode(n122, Tags["rchild"], DataNodeTag, Colors["red"])
+	tree.putNode(n111, Tags["lchild"], DataNodeTag, Colors["red"])
+	tree.putNode(n111, Tags["rchild"], DataNodeTag, Colors["red"])
+	tree.putNode(n112, Tags["lchild"], DataNodeTag, Colors["red"])
+	tree.putNode(n112, Tags["rchild"], DataNodeTag, Colors["red"])
+	tree.putNode(n121, Tags["lchild"], DataNodeTag, Colors["red"])
+	tree.putNode(n121, Tags["rchild"], DataNodeTag, Colors["red"])
+	tree.putNode(n122, Tags["lchild"], DataNodeTag, Colors["red"])
+	tree.putNode(n122, Tags["rchild"], DataNodeTag, Colors["red"])
 
 	return tree
 }

@@ -16,11 +16,15 @@ type Data interface {
 }
 
 // DataError states that the requested data is formatted incorrectly
-type DataError struct{}
-
-func (e DataError) Error() string {
-	return "Node: problem with data"
+type DataError struct {
+	Err error
 }
+
+func (e *DataError) Error() string {
+	return fmt.Sprintf("Problem with node data: %v", e.Err)
+}
+
+func (e *DataError) Unwrap() error { return e.Err }
 
 type IDDistributor interface {
 	// GetID creates a new integer ID with the option to partition ID values by

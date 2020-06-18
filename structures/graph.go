@@ -2,6 +2,7 @@ package structures
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -11,34 +12,43 @@ import (
 
 // NoNodeError states that the requested node does not exist
 type NoNodeError struct {
-	v int
+	v   int
+	Err error
 }
 
 // Error serves the error message for NoNodeError
-func (e NoNodeError) Error() string {
-	return fmt.Sprintf("Graph: no node with value %d", int(e.v))
+func (e *NoNodeError) Error() string {
+	return fmt.Sprintf("No graph node with value %d: %v", int(e.v), e.Err)
 }
+
+func (e *NoNodeError) Unwrap() error { return e.Err }
 
 // NoEdgeError states that the requested edge does not exist
 // n1 and n2 are the IDs of the near and far nodes
 type NoEdgeError struct {
 	msg string
+	Err error
 }
 
 // Error serves the error message for NoEdgeError
-func (e NoEdgeError) Error() string {
-	return "Graph: " + e.msg
+func (e *NoEdgeError) Error() string {
+	return fmt.Sprintf(e.msg+": %v", e.Err)
 }
+
+func (e *NoEdgeError) Unwrap() error { return e.Err }
 
 // EdgeWeightError states that edge value is not valid
 type EdgeWeightError struct {
-	w float64
+	w   float64
+	Err error
 }
 
 // Error serves the error message for EdgeWeightError
-func (e EdgeWeightError) Error() string {
-	return fmt.Sprintf("Graph: invalid edge value %f", e.w)
+func (e *EdgeWeightError) Error() string {
+	return fmt.Sprintf("Invalid edge value %f: %v", e.w, e.Err)
 }
+
+func (e *EdgeWeightError) Unwrap() error { return e.Err }
 
 // Comparable interface defines an orderable type
 // Ordering is used for efficient storage and sorting
@@ -181,7 +191,7 @@ func (g *Graph) GetNodeByID(id int) (*Node, error) {
 			return n, nil
 		}
 	}
-	return nil, NoNodeError{id}
+	return nil, &NoNodeError{id, nil}
 }
 
 // setNodeHelper is a non-blocking version of SetNode so that it can be called
@@ -215,11 +225,11 @@ func (g *Graph) SetNode(n *Node, id, x, y, z int, extra Data) {
 // not exist in the graph
 func (g *Graph) SetNodeByID(id, x, y, z int, extra Data) (*Node, error) {
 	n, err := g.GetNodeByID(id)
-	_, ok := err.(NoNodeError)
-	if err != nil && !ok {
-		return nil, err
-	} else if ok {
+	var errCheck *NoNodeError
+	if errors.As(err, &errCheck) {
 		n = NewNode()
+	} else if err != nil {
+		return nil, fmt.Errorf("setting node by id: %w", err)
 	}
 
 	g.SetNode(n, id, x, y, z, extra)
@@ -258,7 +268,7 @@ func (g *Graph) RemoveNode(n1 *Node) {
 func (g *Graph) RemoveNodeByID(n1 int) (*Node, error) {
 	n, err := g.GetNodeByID(n1)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("remove error by id: %w", err)
 	}
 
 	g.RemoveNode(n)
@@ -283,7 +293,7 @@ func (g *Graph) GetRelative(n *Node, tag string) (*Node, error) {
 			return e.Nodes[1].Node, nil
 		}
 	}
-	return nil, NoEdgeError{fmt.Sprintf("No relative from %d with tag %s", n.ID, tag)}
+	return nil, &NoEdgeError{fmt.Sprintf("No relative from %d with tag %s", n.ID, tag), nil}
 }
 
 // GetRelativeByID returns the relative node with the specified tag
@@ -304,7 +314,7 @@ func (g *Graph) GetEdge(n1 *Node, n2 int) (*Edge, error) {
 		}
 	}
 
-	return nil, NoEdgeError{fmt.Sprintf("No edge from %d to %d", n1.ID, n2)}
+	return nil, &NoEdgeError{fmt.Sprintf("No edge from %d to %d", n1.ID, n2), nil}
 }
 
 // GetEdgeByNodeID returns the edge from n1 to n2
@@ -340,19 +350,19 @@ func (g *Graph) GetEdgeTagsByNodeID(n1, n2 int) (string, string, error) {
 // setEdgeHelper2 sets edge values in one direction
 func (g *Graph) setEdgeHelper2(n1, n2 *Node, w float64, t1, t2 string) error {
 	if w > g.MaxEdgeWeight {
-		return EdgeWeightError{w}
+		return &EdgeWeightError{w, nil}
 	}
 
 	newEdge := false
 	var e *Edge
 	e, err := g.GetEdge(n1, n2.ID)
-	_, ok := err.(NoEdgeError)
-	if err != nil && !ok {
-		return err
-	} else if ok {
+	var errCheck *NoEdgeError
+	if errors.As(err, &errCheck) {
 		e = NewEdge()
 		e.AddNodes(n1, n2, t1, t2)
 		newEdge = true
+	} else if err != nil {
+		return err
 	}
 
 	e.Weight = w
@@ -412,21 +422,22 @@ func (g *Graph) SetEdgeByNodeID(n1, n2 int, w float64, t1, t2 string, bidirectio
 // removeEdgeHelper2 is a non-locking, unidirectional version of remove edge
 func (g *Graph) removeEdgeHelper2(n1, n2 *Node) error {
 	_, err := g.GetEdge(n1, n2.ID)
-	_, ok := err.(NoEdgeError)
-	if err != nil && !ok {
+	var errCheck *NoEdgeError
+	errCheckOk := errors.As(err, &errCheck)
+	if err != nil && !errCheckOk {
 		return err
+	} else if errCheckOk {
+		return nil
 	}
 
-	if !ok {
-		for i, e := range n1.Edges {
-			if e.Nodes[1].ID == n2.ID {
-				if i == len(n1.Edges)-1 {
-					n1.Edges = n1.Edges[:i]
-				} else {
-					n1.Edges = append(n1.Edges[:i], n1.Edges[i+1:]...)
-				}
-				break
+	for i, e := range n1.Edges {
+		if e.Nodes[1].ID == n2.ID {
+			if i == len(n1.Edges)-1 {
+				n1.Edges = n1.Edges[:i]
+			} else {
+				n1.Edges = append(n1.Edges[:i], n1.Edges[i+1:]...)
 			}
+			break
 		}
 	}
 

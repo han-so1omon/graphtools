@@ -65,7 +65,7 @@ func TestGraph(t *testing.T) {
 		// Remove node 1 with RemoveNode
 		g.RemoveNode(n1)
 		_, err = g.GetNodeByID(-1)
-		_, ok = err.(NoNodeError)
+		_, ok = err.(*NoNodeError)
 		if !ok {
 			t.Fatalf("Node not removed from graph properly")
 		}
@@ -73,7 +73,7 @@ func TestGraph(t *testing.T) {
 		// Remove node 2 with RemoveNodeByID
 		g.RemoveNodeByID(-2)
 		_, err = g.GetNodeByID(-2)
-		_, ok = err.(NoNodeError)
+		_, ok = err.(*NoNodeError)
 		if !ok {
 			t.Fatalf("Node not removed from graph properly by ID")
 		}
@@ -102,7 +102,7 @@ func TestGraph(t *testing.T) {
 			n, _ := g.GetNodeByID(i)
 			g.RemoveNode(n)
 			_, err := g.GetNodeByID(i)
-			_, ok = err.(NoNodeError)
+			_, ok = err.(*NoNodeError)
 			if !ok {
 				t.Fatalf("Node not removed from graph properly")
 			}
@@ -112,7 +112,7 @@ func TestGraph(t *testing.T) {
 		for i := 50; i < 100; i++ {
 			g.RemoveNodeByID(i)
 			_, err := g.GetNodeByID(i)
-			_, ok = err.(NoNodeError)
+			_, ok = err.(*NoNodeError)
 			if !ok {
 				t.Fatalf("Node not removed from graph properly")
 			}
@@ -336,7 +336,7 @@ func checkEdge(t *testing.T, g *Graph, n1, n2 *Node, w float64, t1, t2 string) {
 func checkRemoveEdge(t *testing.T, g *Graph, n1, n2 *Node) {
 	t.Helper()
 	_, err := g.GetEdge(n1, n2.ID)
-	_, ok := err.(NoEdgeError)
+	_, ok := err.(*NoEdgeError)
 	if !ok {
 		t.Fatalf(fmt.Sprintf("Edge from %d to %d not removed from graph properly", n1.ID, n2.ID))
 	}
