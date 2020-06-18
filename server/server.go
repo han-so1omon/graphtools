@@ -87,13 +87,13 @@ func handleInstruction(
 			}
 		case "DeleteOneChild":
 			t := (*g).(*structures.RBTree)
-			log.Println(t.Graph)
+			//log.Println(t.Graph)
 			err = t.DeleteOneChild(t.Root)
 			if err != nil {
 				log.Println("Error deleting from tree", err)
 				return
 			}
-			log.Println(t.Graph)
+			//log.Println(t.Graph)
 		}
 	} else if instruction.Structure == structures.GenericGraphManagerType {
 	}

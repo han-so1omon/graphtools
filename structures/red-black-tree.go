@@ -643,7 +643,6 @@ func (t *RBTree) Insert(root *Node, n *Node) error {
 	if !ok {
 		return &DataError{nil}
 	}
-	fmt.Println("here")
 
 	t.Root = root
 	return nil
@@ -887,6 +886,7 @@ func (t *RBTree) replaceNode(n, child *Node) error {
 	if err != nil {
 		return err
 	}
+
 	n2pTag, _, err := t.Graph.GetEdgeTags(n, p.ID)
 	if err != nil {
 		return err
@@ -904,6 +904,10 @@ func (t *RBTree) replaceNode(n, child *Node) error {
 	if err != nil {
 		return err
 	}
+	err = t.Graph.RemoveEdge(n, child, true)
+	if err != nil {
+		return err
+	}
 
 	if n.ID == t.Root.ID {
 		t.Root = child
@@ -918,23 +922,37 @@ func (t *RBTree) DeleteOneChild(n *Node) error {
 	// Precondition: n has at most one non-leaf child
 	var child *Node
 	var err error
-	if t.Graph.HasRelative(n, Tags["lchild"]) {
-		child, err = t.GetLChild(n)
-		if err != nil {
-			return err
-		}
-	} else if t.Graph.HasRelative(n, Tags["rchild"]) {
-		child, err = t.GetRChild(n)
-		if err != nil {
-			return err
-		}
+
+	rc, err := t.GetRChild(n)
+	if err != nil {
+		return fmt.Errorf("DeleteOneChild: %w", err)
+	}
+	rcIsNil, ok := t.NodeIsNil(rc)
+	if !ok {
+		return &DataError{nil}
+	}
+	lc, err := t.GetLChild(n)
+	lcIsNil, ok := t.NodeIsNil(lc)
+	if !ok {
+		return &DataError{nil}
+	}
+	if err != nil {
+		return fmt.Errorf("DeleteOneChild: %w", err)
+	}
+
+	if !rcIsNil && !lcIsNil {
+		return &NilNodeError{fmt.Sprintf("Node %d must have at most one non-leaf child", n.ID), nil}
+	} else if !rcIsNil {
+		child = rc
+	} else if !lcIsNil {
+		child = lc
 	} else {
 		return &NilNodeError{fmt.Sprintf("Node %d must have at least one child", n.ID), nil}
 	}
 
 	err = t.replaceNode(n, child)
 	if err != nil {
-		return err
+		return fmt.Errorf("DeleteOneChild: %w", err)
 	}
 
 	nodeData, ok := ColorDataFromData(n.Extra)
@@ -950,12 +968,13 @@ func (t *RBTree) DeleteOneChild(n *Node) error {
 		if childData.Color == Colors["red"] {
 			err = t.setColor(child, Colors["black"])
 			if err != nil {
-				return err
+				return fmt.Errorf("DeleteOneChild: %w", err)
 			}
 		} else {
 			t.deleteCase1(child)
 		}
 	}
+
 	t.Graph.RemoveNode(n)
 
 	return nil
