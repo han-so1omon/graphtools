@@ -1,8 +1,3 @@
-## Current status
-- Generates random directional graph
-- Serves graph over websocket
-- Displays graph in terminal
-
 ## Info
 Go library for experimenting with graph algorithms
 Can serve graph/algorithm results over websocket
@@ -84,6 +79,5 @@ provided that the UI understands the meaning of the default parameters.
 ![](demos/rbtree-demo-1.gif)
 
 ## TODO
-- RBTree node coordinate mapping
 - Order nodes and edges upon insertion in order to implement binary searching
 - Algorithm demos
