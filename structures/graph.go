@@ -196,7 +196,7 @@ func (g *Graph) GetNodeByID(id int) (*Node, error) {
 
 // setNodeHelper is a non-blocking version of SetNode so that it can be called
 // internally without blocking issues
-func (g *Graph) setNodeHelper(n *Node, id, x, y, z int, extra Data) {
+func (g *Graph) setNodeHelper(n *Node, id int, x, y, z float64, extra Data) {
 	n.ID = id
 	n.Coords = Point{
 		X: x,
@@ -214,7 +214,7 @@ func (g *Graph) setNodeHelper(n *Node, id, x, y, z int, extra Data) {
 
 // SetNode sets node n with ID == id or adds a node with this ID if one does not
 // exist in the graph
-func (g *Graph) SetNode(n *Node, id, x, y, z int, extra Data) {
+func (g *Graph) SetNode(n *Node, id int, x, y, z float64, extra Data) {
 	g.Lock.Lock()
 	defer g.Lock.Unlock()
 
@@ -223,7 +223,7 @@ func (g *Graph) SetNode(n *Node, id, x, y, z int, extra Data) {
 
 // SetNodeByID sets node with ID == id or adds a node with this ID if one does
 // not exist in the graph
-func (g *Graph) SetNodeByID(id, x, y, z int, extra Data) (*Node, error) {
+func (g *Graph) SetNodeByID(id int, x, y, z float64, extra Data) (*Node, error) {
 	n, err := g.GetNodeByID(id)
 	var errCheck *NoNodeError
 	if errors.As(err, &errCheck) {

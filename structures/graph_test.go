@@ -85,7 +85,7 @@ func TestGraph(t *testing.T) {
 		// Set 100 nodes with SetNodeByID
 		data3 := mockData{42}
 		for i := 0; i < 100; i++ {
-			g.SetNodeByID(i, i, i, 0, data3)
+			g.SetNodeByID(i, float64(i), float64(i), 0.0, data3)
 		}
 		for i := 0; i < 100; i++ {
 			_, err := g.GetNodeByID(i)
@@ -128,7 +128,7 @@ func TestGraph(t *testing.T) {
 		// Set 100 nodes with SetNodeByID
 		data := mockData{42}
 		for i := 0; i < 100; i++ {
-			g.SetNodeByID(i, i, i, 0, data)
+			g.SetNodeByID(i, float64(i), float64(i), 0.0, data)
 		}
 
 		n1, _ := g.GetNodeByID(10)
@@ -220,7 +220,7 @@ func TestGraph(t *testing.T) {
 		// Set 100 nodes with SetNodeByID
 		data := mockData{42}
 		for i := 0; i < 100; i++ {
-			g.SetNodeByID(i, i, i, 0, data)
+			g.SetNodeByID(i, float64(i), float64(i), 0.0, data)
 		}
 
 		n1, _ := g.GetNodeByID(10)

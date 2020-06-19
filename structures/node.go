@@ -27,17 +27,16 @@ func (e *DataError) Error() string {
 func (e *DataError) Unwrap() error { return e.Err }
 
 type IDDistributor interface {
-	// GetID creates a new integer ID with the option to partition ID values by
-	// type, denoted by a string parameter
-	GetID(string) int
+	// GetID creates a new integer ID from the set of input parameters
+	GetID(...interface{}) int
 }
 
 // Point is a cartesian demarcation of a node.
 // It is useful for displaying a node
 type Point struct {
-	X int `json:"x"`
-	Y int `json:"y"`
-	Z int `json:"z"`
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+	Z float64 `json:"z"`
 }
 
 type Node struct {
@@ -49,7 +48,8 @@ type Node struct {
 
 func (n *Node) String() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, ".....NODE %d : (%d,%d,%d).....\n", n.ID, n.Coords.X, n.Coords.Y, n.Coords.Z)
+	fmt.Fprintf(&b, ".....NODE %d : (%.2f,%.2f,%.2f).....\n", n.ID, n.Coords.X, n.Coords.Y, n.Coords.Z)
+	fmt.Fprintf(&b, "\t%+v\n", n.Extra)
 	for _, e := range n.Edges {
 		fmt.Fprintf(
 			&b,

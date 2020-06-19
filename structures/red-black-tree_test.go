@@ -76,6 +76,7 @@ func TestRBTree(t *testing.T) {
 
 	t.Run("RBTree node getters and setters", func(t *testing.T) {
 		tree := NewRBTree(ctx, cancel)
+		fmt.Println(tree)
 		tree.putNode(tree.Root, Tags["lchild"], DataNodeTag, Colors["red"])
 		tree.putNode(tree.Root, Tags["rchild"], DataNodeTag, Colors["red"])
 
@@ -115,7 +116,7 @@ func TestRBTree(t *testing.T) {
 		}
 
 		mockNode := NewNode()
-		err = tree.setLChild(n3, mockNode, true)
+		err = tree.setLChild(n3, mockNode, true, true)
 
 		n4, err := tree.GetUncle(mockNode)
 		if err != nil || !reflect.DeepEqual(n2, n4) {
