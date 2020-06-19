@@ -78,7 +78,7 @@ tree. Otherwise, the graph can still be shown with default visual representation
 provided that the UI understands the meaning of the default parameters.
 
 ## Display
-Includes a terminal display using [asciimoo/drawille](https://github.com/asciimoo/drawille)
+[github.com/han-so1omon/graphtools-ui](https://github.com/han-so1omon/graphtools-ui)
 
 ## Demos
 ![](demos/rbtree-demo-1.gif)
