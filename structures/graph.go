@@ -2,9 +2,12 @@ package structures
 
 import (
 	"context"
+	"encoding/csv"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -76,7 +79,7 @@ type GraphDisplayManager interface {
 }
 
 type GenericGraphManager struct {
-	Graph *Graph
+	Graph *Graph `json:"graph"`
 	Type  string `json:"type"`
 
 	// Control structures
@@ -84,6 +87,90 @@ type GenericGraphManager struct {
 	cancel  context.CancelFunc
 	ctx     context.Context
 	lock    *sync.Mutex
+	isDone  bool
+}
+
+func LoadCSV(ctx context.Context, cancel context.CancelFunc, csvText string) (*GenericGraphManager, error) {
+	//mgr := NewGenericGraphManager(ctx, cancel, maxEdgeWeight)
+	var (
+		mgr           *GenericGraphManager
+		numNodes      int
+		numEdges      int
+		maxEdgeWeight float64
+	)
+	reader := csv.NewReader(strings.NewReader(csvText))
+	reader.FieldsPerRecord = -1
+	lineNum := 0
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		if lineNum == 0 {
+			numNodes, err = strconv.Atoi(record[0])
+			if err != nil {
+				return nil, err
+			}
+			numEdges, err = strconv.Atoi(record[1])
+			if err != nil {
+				return nil, err
+			}
+			maxEdgeWeight, err = strconv.ParseFloat(record[2], 64)
+			if err != nil {
+				return nil, err
+			}
+			mgr = NewGenericGraphManager(ctx, cancel, maxEdgeWeight)
+		} else if lineNum <= numNodes {
+			id, err := strconv.Atoi(record[0])
+			if err != nil {
+				return nil, err
+			}
+			x, err := strconv.ParseFloat(record[1], 64)
+			if err != nil {
+				return nil, err
+			}
+			y, err := strconv.ParseFloat(record[2], 64)
+			if err != nil {
+				return nil, err
+			}
+			z, err := strconv.ParseFloat(record[3], 64)
+			if err != nil {
+				return nil, err
+			}
+
+			data := ColorData{
+				Color:  Colors["orange"],
+				Type:   DataNodeTag,
+				Height: 0,
+			}
+			mgr.Graph.SetNodeByID(id, x, y, z, data)
+		} else if lineNum <= numNodes+numEdges {
+			n1, err := strconv.Atoi(record[0])
+			if err != nil {
+				return nil, err
+			}
+			n2, err := strconv.Atoi(record[1])
+			if err != nil {
+				return nil, err
+			}
+			w, err := strconv.ParseFloat(record[2], 64)
+			if err != nil {
+				return nil, err
+			}
+			mgr.Graph.SetEdgeByNodeID(n1, n2, w, "n", "n", false)
+			//func (g *Graph) SetEdgeByNodeID(n1, n2 int, w float64, t1, t2 string, bidirectional bool) error {
+		} else {
+			break // done with CSV per specification
+		}
+
+		lineNum++
+	}
+
+	return mgr, nil
 }
 
 func NewGenericGraphManager(
@@ -112,15 +199,18 @@ func (g *GenericGraphManager) Updated() <-chan struct{} {
 // It is the prerogative of graph owners (i.e. end-users, accompanying
 // structures, or algorithms) to call OnUpdate()
 func (g *GenericGraphManager) OnUpdate() {
-	g.updated <- struct{}{}
+	if !g.isDone {
+		g.updated <- struct{}{}
+	}
 }
 
 // Done is useful to be called when the graph is decided to be done
 // It is the prerogative of graph owners (i.e. end-users, accompanying
 // structures, or algorithms) to call Done()
 func (g *GenericGraphManager) Done() {
+	//g.cancel()
 	close(g.updated)
-	g.cancel()
+	g.isDone = true
 }
 
 // Lock is useful to be called when the graph needs to be accessed as an atomic

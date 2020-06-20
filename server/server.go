@@ -57,7 +57,6 @@ func handleInstruction(
 	g *structures.GraphDisplayManager) {
 	var err error
 
-	log.Println(instruction)
 	// Execute functions based off of instruction
 	// For functions that require locking the graph display manager, unlock immeadiately
 	// so that other routines can deal with tree once OnUpdate is called
@@ -96,16 +95,33 @@ func handleInstruction(
 			//log.Println(t.Graph)
 		}
 	} else if instruction.Structure == structures.GenericGraphManagerType {
+		switch instruction.Action {
+		case "LoadCSV":
+			//FIXME
+			if g != nil && *g != nil {
+				(*g).Done()
+			}
+
+			*g, err = structures.LoadCSV(ctx, cancel, instruction.Params["csvText"].(string))
+			if err != nil {
+				log.Println("Error loading graph from CSV file: ", err)
+			}
+			/*
+				gr := (*g).(*structures.GenericGraphManager)
+				log.Println(gr.Graph)
+			*/
+		}
 	}
-	if g != nil {
+	if g != nil && *g != nil {
 		(*g).OnUpdate()
-	} else {
+	} /* else {
 		sendInternalError(
 			ctx,
 			ws,
 			internalError{ServerErrorType, "Attempting to call update on nil graph"},
 		)
 	}
+	*/
 }
 
 func receiveInstructions(
@@ -183,8 +199,10 @@ func GraphConnect(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 			select {
 			case <-ctx.Done():
 				done = true
-			case <-(*g).Updated():
-				go sendGraph(ctx, ws, g)
+			case _, ok := <-(*g).Updated():
+				if ok {
+					go sendGraph(ctx, ws, g)
+				}
 			}
 		} else {
 			select {

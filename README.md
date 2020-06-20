@@ -78,6 +78,7 @@ provided that the UI understands the meaning of the default parameters.
 
 ## Demos
 ![](demos/rbtree-demo-2.gif)
+![](static/generic-graph-demo-1.gif)
 
 ## TODO
 - Order nodes and edges upon insertion in order to implement binary searching

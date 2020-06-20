@@ -192,6 +192,7 @@ type RBTree struct {
 	updated chan struct{}
 	cancel  context.CancelFunc
 	ctx     context.Context
+	isDone  bool
 }
 
 func (t *RBTree) String() string {
@@ -236,15 +237,18 @@ func (t *RBTree) Updated() <-chan struct{} {
 // It is the prerogative of graph owners (i.e. end-users, accompanying
 // structures, or algorithms) to call OnUpdate()
 func (t *RBTree) OnUpdate() {
-	t.updated <- struct{}{}
+	if !t.isDone {
+		t.updated <- struct{}{}
+	}
 }
 
 // Done is useful to be called when the graph is decided to be done
 // It is the prerogative of graph owners (i.e. end-users, accompanying
 // structures, or algorithms) to call Done()
 func (t *RBTree) Done() {
+	//t.cancel()
 	close(t.updated)
-	t.cancel()
+	t.isDone = true
 }
 
 // Lock is useful to be called when the graph needs to be accessed as an atomic
