@@ -77,7 +77,7 @@ provided that the UI understands the meaning of the default parameters.
 [github.com/han-so1omon/graphtools-ui](https://github.com/han-so1omon/graphtools-ui)
 
 ## Demos
-![](demos/rbtree-demo-1.gif)
+![](demos/rbtree-demo-2.gif)
 
 ## TODO
 - Order nodes and edges upon insertion in order to implement binary searching
