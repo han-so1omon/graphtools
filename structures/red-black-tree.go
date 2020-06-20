@@ -1,3 +1,6 @@
+//TODO convert numMaxHeightNodes into nodeHeights map[int]int storing number of nodes at
+//each height. Each time a node's Extra data changes, check if nodeHeights
+//should change as well
 package structures
 
 import (
@@ -175,7 +178,8 @@ type RBTree struct {
 
 	idDistributor     IDDistributor
 	Height            int `json:"height"`
-	numMaxHeightNodes int
+	nodeHeights       map[int]int
+	removePredecessor bool
 
 	// Define display parameters
 	// Amount that x changes from parent to child, thinning every successive
@@ -204,16 +208,18 @@ func (t *RBTree) String() string {
 func NewRBTree(ctx context.Context, cancel context.CancelFunc) *RBTree {
 	t := new(RBTree)
 	t.lock = &sync.Mutex{}
-
-	t.idDistributor = NewRBIDDistributor()
-
 	t.updated = make(chan struct{})
 	t.cancel = cancel
 	t.ctx = ctx
+
+	t.idDistributor = NewRBIDDistributor()
+
 	t.Graph = NewGraph(1.0)
 	t.Type = RBTreeType
+
 	t.layerDxRatio = 0.55
 	t.layerDy = 1.0
+	t.nodeHeights = make(map[int]int)
 
 	t.putNode(nil, Tags["root"], NilNodeTag, Colors["black"])
 
@@ -305,7 +311,7 @@ func (t *RBTree) putNode(parent *Node, tag, nodeTypeTag, color string) error {
 
 		t.Root = n
 		t.Height = 0
-		t.numMaxHeightNodes = 1
+		t.nodeHeights[0] = 1
 
 		// Set nil node as parent of root
 		id = t.idDistributor.GetID(NilNodeTag, t.Graph.HasNodeWithID)
@@ -318,7 +324,7 @@ func (t *RBTree) putNode(parent *Node, tag, nodeTypeTag, color string) error {
 			Height: -1,
 		}
 		p, err := t.Graph.SetNodeByID(id, x, y, z, data)
-		err = t.setRChild(p, n, true, true)
+		err = t.setRChild(p, n, true, true, false)
 		if err != nil {
 			return &NilNodeError{"Problem setting nil parent of root node", err}
 		}
@@ -334,7 +340,7 @@ func (t *RBTree) putNode(parent *Node, tag, nodeTypeTag, color string) error {
 			Height: 1,
 		}
 		rc, err := t.Graph.SetNodeByID(id, x, y, z, data)
-		err = t.setRChild(n, rc, true, true)
+		err = t.setRChild(n, rc, true, true, false)
 		if err != nil {
 			return &NilNodeError{"Problem setting right child of root node", err}
 		}
@@ -348,7 +354,7 @@ func (t *RBTree) putNode(parent *Node, tag, nodeTypeTag, color string) error {
 			Height: 1,
 		}
 		lc, err := t.Graph.SetNodeByID(id, x, y, z, data)
-		err = t.setLChild(n, lc, true, true)
+		err = t.setLChild(n, lc, true, true, false)
 		if err != nil {
 			return &NilNodeError{"Problem setting left child of root node", err}
 		}
@@ -400,16 +406,10 @@ func (t *RBTree) putNode(parent *Node, tag, nodeTypeTag, color string) error {
 		return err
 	}
 
-	if height > t.Height {
-		t.Height = height
-		t.numMaxHeightNodes = 1
-	} else if height == t.Height {
-		t.numMaxHeightNodes++
-	}
 	if tag == Tags["rchild"] {
-		t.setRChild(parent, n, true, true)
+		t.setRChild(parent, n, true, true, false)
 	} else if tag == Tags["lchild"] {
-		t.setLChild(parent, n, true, true)
+		t.setLChild(parent, n, true, true, false)
 	}
 
 	return nil
@@ -488,7 +488,7 @@ func (t *RBTree) GetUncle(n *Node) (*Node, error) {
 	return t.GetSibling(p)
 }
 
-func (t *RBTree) setRChild(np, nrc *Node, bidirectional, removeCurrent bool) error {
+func (t *RBTree) setRChild(np, nrc *Node, bidirectional, removeCurrent, fromPriorNode bool) error {
 	var err error
 	// Remove current right child from graph if requested
 	if removeCurrent {
@@ -511,11 +511,12 @@ func (t *RBTree) setRChild(np, nrc *Node, bidirectional, removeCurrent bool) err
 	if !ok {
 		return &DataError{nil}
 	}
+	prevHeight := nrcData.Height
 	nrcData.Height = npData.Height + 1
 	newX := np.Coords.X + math.Pow(t.layerDxRatio, float64(nrcData.Height))
 	newY := np.Coords.Y + t.layerDy
 
-	err = t.setHeightRecurse(nrc, newX, newY, 0, nrcData)
+	err = t.setHeightRecurse(nrc, newX, newY, 0, nrcData, prevHeight, fromPriorNode)
 	if err != nil {
 		return err
 	}
@@ -523,7 +524,7 @@ func (t *RBTree) setRChild(np, nrc *Node, bidirectional, removeCurrent bool) err
 	return t.Graph.SetEdge(np, nrc, 1.0, Tags["parent"], Tags["rchild"], bidirectional)
 }
 
-func (t *RBTree) setLChild(np, nlc *Node, bidirectional, removeCurrent bool) error {
+func (t *RBTree) setLChild(np, nlc *Node, bidirectional, removeCurrent, fromPriorNode bool) error {
 	var err error
 	// Remove current left child from graph if requested
 	if removeCurrent {
@@ -546,11 +547,12 @@ func (t *RBTree) setLChild(np, nlc *Node, bidirectional, removeCurrent bool) err
 	if !ok {
 		return &DataError{nil}
 	}
+	prevHeight := nlcData.Height
 	nlcData.Height = npData.Height + 1
 	newX := np.Coords.X - math.Pow(t.layerDxRatio, float64(nlcData.Height))
 	newY := np.Coords.Y + t.layerDy
 
-	err = t.setHeightRecurse(nlc, newX, newY, 0, nlcData)
+	err = t.setHeightRecurse(nlc, newX, newY, 0, nlcData, prevHeight, fromPriorNode)
 	if err != nil {
 		return err
 	}
@@ -568,8 +570,27 @@ func (t *RBTree) setColor(n *Node, color string) error {
 	return nil
 }
 
-func (t *RBTree) setHeightRecurse(n *Node, x, y, z float64, data ColorData) error {
+func (t *RBTree) setHeightRecurse(n *Node, x, y, z float64, data ColorData, prevHeight int, fromPriorNode bool) error {
+	if fromPriorNode {
+		t.nodeHeights[prevHeight]--
+		for t.nodeHeights[t.Height] == 0 {
+			if t.Height == 0 {
+				break
+			}
+			t.Height = t.Height - 1
+		}
+	}
 	t.Graph.SetNode(n, n.ID, x, y, z, data)
+	_, ok := t.nodeHeights[data.Height]
+	if !ok {
+		t.nodeHeights[data.Height] = 1
+	} else {
+		t.nodeHeights[data.Height]++
+	}
+	if data.Height > t.Height {
+		t.Height = data.Height
+	}
+
 	var errCheck *NoEdgeError
 
 	// Recurse into left child
@@ -579,10 +600,11 @@ func (t *RBTree) setHeightRecurse(n *Node, x, y, z float64, data ColorData) erro
 		if !ok {
 			return &DataError{nil}
 		}
+		lcPrevHeight := lcData.Height
 		lcData.Height = data.Height + 1
 		newX := n.Coords.X - math.Pow(t.layerDxRatio, float64(lcData.Height))
 		newY := n.Coords.Y + t.layerDy
-		err = t.setHeightRecurse(lc, newX, newY, 0, lcData)
+		err = t.setHeightRecurse(lc, newX, newY, 0, lcData, lcPrevHeight, true)
 		if err != nil {
 			return err
 		}
@@ -597,10 +619,11 @@ func (t *RBTree) setHeightRecurse(n *Node, x, y, z float64, data ColorData) erro
 		if !ok {
 			return &DataError{nil}
 		}
+		rcPrevHeight := rcData.Height
 		rcData.Height = data.Height + 1
 		newX := n.Coords.X + math.Pow(t.layerDxRatio, float64(rcData.Height))
 		newY := n.Coords.Y + t.layerDy
-		err = t.setHeightRecurse(rc, newX, newY, 0, rcData)
+		err = t.setHeightRecurse(rc, newX, newY, 0, rcData, rcPrevHeight, true)
 		if err != nil {
 			return err
 		}
@@ -651,22 +674,22 @@ func (t *RBTree) rotateLeft(n *Node) error {
 	}
 
 	// Set new edges
-	err = t.setRChild(n, nnewLeft, true, false)
+	err = t.setRChild(n, nnewLeft, true, false, true)
 	if err != nil {
 		return err
 	}
-	err = t.setLChild(nnew, n, true, false)
+	err = t.setLChild(nnew, n, true, false, true)
 	if err != nil {
 		return err
 	}
 
 	if n2pTag == Tags["lchild"] {
-		err = t.setLChild(p, nnew, true, false)
+		err = t.setLChild(p, nnew, true, false, true)
 		if err != nil {
 			return err
 		}
 	} else if n2pTag == Tags["rchild"] {
-		err = t.setRChild(p, nnew, true, false)
+		err = t.setRChild(p, nnew, true, false, true)
 		if err != nil {
 			return err
 		}
@@ -719,22 +742,22 @@ func (t *RBTree) rotateRight(n *Node) error {
 	}
 
 	// Set new edges
-	err = t.setLChild(n, nnewRight, true, false)
+	err = t.setLChild(n, nnewRight, true, false, true)
 	if err != nil {
 		return err
 	}
-	err = t.setRChild(nnew, n, true, false)
+	err = t.setRChild(nnew, n, true, false, true)
 	if err != nil {
 		return err
 	}
 
 	if n2pTag == Tags["lchild"] {
-		err = t.setLChild(p, nnew, true, false)
+		err = t.setLChild(p, nnew, true, false, true)
 		if err != nil {
 			return err
 		}
 	} else if n2pTag == Tags["rchild"] {
-		err = t.setRChild(p, nnew, true, false)
+		err = t.setRChild(p, nnew, true, false, true)
 		if err != nil {
 			return err
 		}
@@ -752,6 +775,7 @@ func (t *RBTree) rotateRight(n *Node) error {
 func (t *RBTree) Insert(root *Node, n *Node) error {
 	t.lock.Lock()
 	defer t.lock.Unlock()
+	fmt.Println(t.Height, t.nodeHeights)
 	err := t.insertRecurse(root, n)
 	if err != nil {
 		return fmt.Errorf("Insert: %w", err)
@@ -802,7 +826,7 @@ func (t *RBTree) insertRecurse(root *Node, n *Node) error {
 		if !childIsNil {
 			t.insertRecurse(child, n)
 		} else {
-			err = t.setLChild(root, n, true, true)
+			err = t.setLChild(root, n, true, true, false)
 		}
 	} else {
 		child, err = t.GetRChild(root)
@@ -813,7 +837,7 @@ func (t *RBTree) insertRecurse(root *Node, n *Node) error {
 		if !childIsNil {
 			t.insertRecurse(child, n)
 		} else {
-			err = t.setRChild(root, n, true, true)
+			err = t.setRChild(root, n, true, true, false)
 		}
 	}
 
@@ -831,62 +855,6 @@ func (t *RBTree) insertRecurse(root *Node, n *Node) error {
 	}
 
 	return nil
-	/*
-		isNil, ok := t.NodeIsNil(root)
-		if !ok {
-			return &DataError{nil}
-		}
-
-		var child *Node
-		var err error
-		var isLeft bool
-		if !isNil {
-			cmp := n.Compare(root)
-			if cmp < 0 {
-				child, err = t.GetLChild(root)
-				isLeft = true
-			} else {
-				child, err = t.GetRChild(root)
-				isLeft = false
-			}
-
-			if err != nil {
-				return err
-			}
-			isNil, ok = t.NodeIsNil(child)
-			if !ok {
-				return &DataError{nil}
-			}
-			if !isNil {
-				return t.insertRecurse(child, n)
-			} else {
-				if isLeft {
-					err = t.setLChild(root, n, true, false)
-				} else {
-					err = t.setRChild(root, n, true, false)
-				}
-				if err != nil {
-					return err
-				}
-				t.removeNilNode(child)
-			}
-		}
-
-		err = t.setColor(n, Colors["red"])
-		if err != nil {
-			return err
-		}
-		err = t.putNode(n, Tags["lchild"], NilNodeTag, Colors["black"])
-		if err != nil {
-			return err
-		}
-		t.putNode(n, Tags["rchild"], NilNodeTag, Colors["black"])
-		if err != nil {
-			return err
-		}
-
-		return nil
-	*/
 }
 
 func (t *RBTree) insertRepairTree(n *Node) error {
@@ -1068,6 +1036,239 @@ func (t *RBTree) insertCase4Step2(n *Node) error {
 	return nil
 }
 
+// Max element of left subtree
+func (t *RBTree) getPredecessor(n *Node) (*Node, error) {
+	var (
+		err              error
+		foundPredecessor bool = false
+		ok               bool
+		predecessor      *Node
+	)
+
+	// Get left child
+	predecessor, err = t.GetLChild(n)
+	if err != nil {
+		return nil, err
+	}
+	foundPredecessor, ok = t.NodeIsNil(predecessor)
+	if !ok {
+		return nil, &DataError{}
+	} else if foundPredecessor {
+		// Predecessor is nil node
+		return nil, &NilNodeError{fmt.Sprintf("Predecessor of %d is nil node", n.ID), nil}
+	}
+
+	// Get max element from remaining right subtree
+	for !foundPredecessor {
+		next, err := t.GetRChild(predecessor)
+		if err != nil {
+			return nil, err
+		}
+		foundPredecessor, ok = t.NodeIsNil(next)
+		if !ok {
+			return nil, &DataError{}
+		} else if !foundPredecessor {
+			predecessor = next
+		}
+
+	}
+
+	return predecessor, nil
+}
+
+// Min element of right subtree
+func (t *RBTree) getSuccessor(n *Node) (*Node, error) {
+	var (
+		err            error
+		foundSuccessor bool = false
+		ok             bool
+		successor      *Node
+	)
+
+	// Get right child
+	successor, err = t.GetRChild(n)
+	if err != nil {
+		return nil, err
+	}
+	foundSuccessor, ok = t.NodeIsNil(successor)
+	if !ok {
+		return nil, &DataError{}
+	} else if foundSuccessor {
+		// Successor is nil node
+		return nil, &NilNodeError{fmt.Sprintf("Successor of %d is nil node", n.ID), nil}
+	}
+
+	// Get max element from remaining left subtree
+	for !foundSuccessor {
+		next, err := t.GetLChild(successor)
+		if err != nil {
+			return nil, err
+		}
+		foundSuccessor, ok = t.NodeIsNil(next)
+		if !ok {
+			return nil, &DataError{}
+		} else if !foundSuccessor {
+			successor = next
+		}
+	}
+
+	return successor, nil
+}
+
+func (t *RBTree) switchNodes(n1, n2 *Node) error {
+	var (
+		errCheck                   *NoEdgeError
+		noLC1, noRC1, noLC2, noRC2 bool
+	)
+	// Switch node heights and coords
+	n1Data, ok := ColorDataFromData(n1.Extra)
+	n1DataCopy := n1Data
+	if !ok {
+		return &DataError{}
+	}
+	n2Data, ok := ColorDataFromData(n2.Extra)
+	if !ok {
+		return &DataError{}
+	}
+	t.Graph.SetNode(n1, n1.ID, n2.Coords.X, n2.Coords.Y, n2.Coords.Z, n2Data)
+	t.Graph.SetNode(n2, n2.ID, n1.Coords.X, n1.Coords.Y, n1.Coords.Z, n1DataCopy)
+
+	// Get immediate family for n1
+	p1, err := t.GetParent(n1)
+	if err != nil {
+		return err
+	}
+	n12p1Tag, _, err := t.Graph.GetEdgeTags(n1, p1.ID)
+	if err != nil {
+		return err
+	}
+	lc1, err := t.GetLChild(n1)
+	noLC1 = errors.As(err, &errCheck)
+	if err != nil && !noLC1 {
+		return err
+	}
+	rc1, err := t.GetRChild(n1)
+	noRC1 = errors.As(err, &errCheck)
+	if err != nil && !noRC1 {
+		return err
+	}
+
+	// Get immediate family for n2
+	p2, err := t.GetParent(n2)
+	if err != nil {
+		return err
+	}
+	n22p2Tag, _, err := t.Graph.GetEdgeTags(n2, p2.ID)
+	if err != nil {
+		return err
+	}
+
+	lc2, err := t.GetLChild(n2)
+	noLC2 = errors.As(err, &errCheck)
+	if err != nil && !noLC2 {
+		return err
+	}
+	rc2, err := t.GetRChild(n2)
+	noRC2 = errors.As(err, &errCheck)
+	if err != nil && !noRC2 {
+		return err
+	}
+
+	// Remove old edges before setting up new edges so that we don't
+	// accidentally remove a new edge between nodes that were previously
+	// attached in a different way
+	err = t.Graph.RemoveEdge(n1, p1, true)
+	if err != nil {
+		return err
+	}
+	err = t.Graph.RemoveEdge(n2, p2, true)
+	if err != nil {
+		return err
+	}
+	if !noLC1 {
+		err = t.Graph.RemoveEdge(n1, lc1, true)
+		if err != nil {
+			return err
+		}
+	}
+	if !noRC1 {
+		err = t.Graph.RemoveEdge(n1, rc1, true)
+		if err != nil {
+			return err
+		}
+	}
+	if !noLC2 {
+		err = t.Graph.RemoveEdge(n2, lc2, true)
+		if err != nil {
+			return err
+		}
+	}
+	if !noRC2 {
+		err = t.Graph.RemoveEdge(n2, rc2, true)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Set up new edges
+	// Handle case where n1 is parent of n2 or n2 is parent of p1
+	if n1.ID == p2.ID {
+		p2 = n2
+		if n22p2Tag == Tags["lchild"] {
+			lc1 = n1
+		} else {
+			rc1 = n1
+		}
+	}
+	if n2.ID == p1.ID {
+		p2 = n1
+		if n12p1Tag == Tags["lchild"] {
+			lc2 = n2
+		} else {
+			rc2 = n2
+		}
+	}
+	if n12p1Tag == Tags["lchild"] {
+		err = t.setLChild(p1, n2, true, false, true)
+	} else {
+		err = t.setRChild(p1, n2, true, false, true)
+	}
+	if err != nil {
+		return err
+	}
+	if n22p2Tag == Tags["lchild"] {
+		err = t.setLChild(p2, n1, true, false, true)
+	} else {
+		err = t.setRChild(p2, n1, true, false, true)
+	}
+	if !noLC1 {
+		err = t.setLChild(n2, lc1, true, false, true)
+		if err != nil {
+			return err
+		}
+	}
+	if !noRC1 {
+		err = t.setRChild(n2, rc1, true, false, true)
+		if err != nil {
+			return err
+		}
+	}
+	if !noLC2 {
+		err = t.setLChild(n1, lc2, true, false, true)
+		if err != nil {
+			return err
+		}
+	}
+	if !noRC2 {
+		err = t.setRChild(n1, rc2, true, false, true)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (t *RBTree) replaceNode(n, child *Node) error {
 	p, err := t.GetParent(n)
 	if err != nil {
@@ -1079,9 +1280,9 @@ func (t *RBTree) replaceNode(n, child *Node) error {
 		return err
 	}
 	if n2pTag == Tags["lchild"] {
-		err = t.setLChild(p, child, true, false)
+		err = t.setLChild(p, child, true, false, true)
 	} else {
-		err = t.setRChild(p, child, true, false)
+		err = t.setRChild(p, child, true, false, true)
 	}
 	if err != nil {
 		return err
@@ -1103,16 +1304,65 @@ func (t *RBTree) replaceNode(n, child *Node) error {
 	return nil
 }
 
-func (t *RBTree) DeleteOneChild(n *Node) error {
+// Delete removes a node from the RBTree and deletes it from the underlying graph
+// Round-robin removes in-order predecessor, then in-order successor, etc.
+//FIXME
+func (t *RBTree) Delete(n *Node) error {
+	var (
+		err             error
+		errCheck        *NilNodeError
+		replacementNode *Node
+	)
 	t.Lock()
 	defer t.Unlock()
+	fmt.Println(t.Height, t.nodeHeights)
+	if t.removePredecessor {
+		replacementNode, err = t.getPredecessor(n)
+		if err != nil && errors.As(err, &errCheck) {
+			replacementNode, err = t.getSuccessor(n)
+			if err != nil {
+				return fmt.Errorf("Delete: %w", err)
+			}
+		} else if err != nil {
+			return fmt.Errorf("Delete: %w", err)
+		}
+
+	} else {
+		replacementNode, err = t.getSuccessor(n)
+		if err != nil && errors.As(err, &errCheck) {
+			replacementNode, err = t.getPredecessor(n)
+			if err != nil {
+				return fmt.Errorf("Delete: %w", err)
+			}
+		} else if err != nil {
+			return fmt.Errorf("Delete: %w", err)
+		}
+	}
+
+	err = t.switchNodes(n, replacementNode)
+	if err != nil {
+		return fmt.Errorf("Delete: %w", err)
+	}
+	t.Root = replacementNode
+
+	err = t.deleteOneChild(n)
+	if err != nil {
+		return fmt.Errorf("Delete: %w", err)
+	}
+
+	t.removePredecessor = !t.removePredecessor
+
+	return nil
+}
+
+func (t *RBTree) deleteOneChild(n *Node) error {
 	// Precondition: n has at most one non-leaf child
 	var child *Node
 	var err error
 
 	rc, err := t.GetRChild(n)
 	if err != nil {
-		return fmt.Errorf("DeleteOneChild: %w", err)
+		return err
 	}
 	rcIsNil, ok := t.NodeIsNil(rc)
 	if !ok {
@@ -1124,22 +1374,32 @@ func (t *RBTree) DeleteOneChild(n *Node) error {
 		return &DataError{nil}
 	}
 	if err != nil {
-		return fmt.Errorf("DeleteOneChild: %w", err)
+		return err
 	}
 
 	if !rcIsNil && !lcIsNil {
 		return &NilNodeError{fmt.Sprintf("Node %d must have at most one non-leaf child", n.ID), nil}
 	} else if !rcIsNil {
 		child = rc
-	} else if !lcIsNil {
-		child = lc
+		if lcIsNil {
+			t.Graph.RemoveNode(lc)
+		}
 	} else {
-		return &NilNodeError{fmt.Sprintf("Node %d must have at least one child", n.ID), nil}
+		child = lc
+		// Delete right child to prevent hanging nil node
+		t.Graph.RemoveNode(rc)
 	}
+	/*
+		} else if !lcIsNil {
+			child = lc
+		} else {
+			return &NilNodeError{fmt.Sprintf("Node %d must have at least one child", n.ID), nil}
+		}
+	*/
 
 	err = t.replaceNode(n, child)
 	if err != nil {
-		return fmt.Errorf("DeleteOneChild: %w", err)
+		return err
 	}
 
 	nodeData, ok := ColorDataFromData(n.Extra)
@@ -1155,10 +1415,13 @@ func (t *RBTree) DeleteOneChild(n *Node) error {
 		if childData.Color == Colors["red"] {
 			err = t.setColor(child, Colors["black"])
 			if err != nil {
-				return fmt.Errorf("DeleteOneChild: %w", err)
+				return err
 			}
 		} else {
-			t.deleteCase1(child)
+			err = t.deleteCase1(child)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -1168,17 +1431,9 @@ func (t *RBTree) DeleteOneChild(n *Node) error {
 }
 
 func (t *RBTree) deleteCase1(n *Node) error {
-	_, err := t.GetParent(n)
-	// NoEdgeError is acceptable, as it means that the parent does not exist
-	var errCheck *NoEdgeError
-	if errors.As(err, &errCheck) {
-		return nil
-	} else if err != nil {
-		// Make sure there is not an unexpected error
-		return err
+	if n.ID != t.Root.ID {
+		return t.deleteCase2(n)
 	}
-
-	t.deleteCase2(n)
 	return nil
 }
 
@@ -1221,8 +1476,7 @@ func (t *RBTree) deleteCase2(n *Node) error {
 		}
 	}
 
-	t.deleteCase3(n)
-	return nil
+	return t.deleteCase3(n)
 }
 
 func (t *RBTree) deleteCase3(n *Node) error {
@@ -1244,28 +1498,28 @@ func (t *RBTree) deleteCase3(n *Node) error {
 		return &DataError{nil}
 	}
 
-	rc, err := t.GetRChild(n)
+	sRc, err := t.GetRChild(s)
 	if err != nil {
 		return err
 	}
-	rcData, ok := ColorDataFromData(rc.Extra)
+	sRcData, ok := ColorDataFromData(sRc.Extra)
 	if !ok {
 		return &DataError{nil}
 	}
 
-	lc, err := t.GetLChild(n)
+	sLc, err := t.GetLChild(s)
 	if err != nil {
 		return err
 	}
-	lcData, ok := ColorDataFromData(lc.Extra)
+	sLcData, ok := ColorDataFromData(sLc.Extra)
 	if !ok {
 		return &DataError{nil}
 	}
 
 	if (pData.Color == Colors["black"]) &&
 		(sData.Color == Colors["black"]) &&
-		(lcData.Color == Colors["black"]) &&
-		(rcData.Color == Colors["black"]) {
+		(sLcData.Color == Colors["black"]) &&
+		(sRcData.Color == Colors["black"]) {
 		err = t.setColor(s, Colors["red"])
 		if err != nil {
 			return err
@@ -1295,28 +1549,28 @@ func (t *RBTree) deleteCase4(n *Node) error {
 		return &DataError{nil}
 	}
 
-	rc, err := t.GetRChild(n)
+	sRc, err := t.GetRChild(s)
 	if err != nil {
 		return err
 	}
-	rcData, ok := ColorDataFromData(rc.Extra)
+	sRcData, ok := ColorDataFromData(sRc.Extra)
 	if !ok {
 		return &DataError{nil}
 	}
 
-	lc, err := t.GetLChild(n)
+	sLc, err := t.GetLChild(s)
 	if err != nil {
 		return err
 	}
-	lcData, ok := ColorDataFromData(lc.Extra)
+	sLcData, ok := ColorDataFromData(sLc.Extra)
 	if !ok {
 		return &DataError{nil}
 	}
 
 	if (pData.Color == Colors["red"]) &&
 		(sData.Color == Colors["black"]) &&
-		(lcData.Color == Colors["black"]) &&
-		(rcData.Color == Colors["black"]) {
+		(sLcData.Color == Colors["black"]) &&
+		(sRcData.Color == Colors["black"]) {
 		err = t.setColor(s, Colors["red"])
 		if err != nil {
 			return err

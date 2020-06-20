@@ -22,7 +22,7 @@ type Instruction struct {
 
 const (
 	// ServerErrorType denotes a server error on a websocket message
-	ServerErrorType = "error"
+	ServerErrorType = "server-error"
 )
 
 type internalError struct {
@@ -77,7 +77,7 @@ func handleInstruction(
 			t := (*g).(*structures.RBTree)
 			n, err := t.NewNode(structures.DataNodeTag)
 			if err != nil {
-				log.Println("Error getting new node for insertion into tree")
+				log.Println("Error getting new node for insertion into tree: ")
 				return
 			}
 			err = t.Insert(t.Root, n)
@@ -85,12 +85,12 @@ func handleInstruction(
 				log.Println("Error inserting into tree: ", err)
 				return
 			}
-		case "DeleteOneChild":
+		case "Delete":
 			t := (*g).(*structures.RBTree)
 			//log.Println(t.Graph)
-			err = t.DeleteOneChild(t.Root)
+			err = t.Delete(t.Root)
 			if err != nil {
-				log.Println("Error deleting from tree", err)
+				log.Println("Error deleting from tree: ", err)
 				return
 			}
 			//log.Println(t.Graph)

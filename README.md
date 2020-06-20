@@ -1,5 +1,6 @@
 ## Info
 Go library for experimenting with graph algorithms
+
 Can serve graph/algorithm results over websocket
 
 ## Websocket API
@@ -81,3 +82,4 @@ provided that the UI understands the meaning of the default parameters.
 ## TODO
 - Order nodes and edges upon insertion in order to implement binary searching
 - Algorithm demos
+- Bug in tracking node heights of RBTree
