@@ -29,6 +29,17 @@ if the parameters are not able to be successfully converted. Be aware that this
 may cause unexpected consequences if, for example a float is converted to an
 integer.
 
+If you intend to send a CSV to the generic graph display manager, then the format is as such:
+```
+numNodes numEdges maxEdgeWeight
+n1_id n1_x n1_y n1_z
+...
+nn_id nn_x nn_y nn_z
+e1_n1_id e1_n2_id
+...
+em_n1_id em_n2_id
+```
+
 ### Server to client
 Server-to-client responses take the following form:
 ```
